@@ -1,0 +1,2264 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Akıllı WC Operasyon, Denetim ve Olay Yönetim Platformu</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome 6 CDN -->
+  <!-- Vendor QR Code Generators -->
+  <script src="vendor/qrcode.js"></script>
+  <script src="vendor/qrcode_UTF8.js"></script>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .badge-ontime { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .badge-outoftime { background-color: #fef9c3; color: #a16207; border: 1px solid #fde047; }
+    .badge-notdone { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .badge-waiting { background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    @media print {
+      body * { visibility: hidden !important; }
+      #stickerPrintCard, #stickerPrintCard * { visibility: visible !important; }
+      #stickerPrintCard { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 100mm; max-width: 100%; border: 2px solid #000; box-shadow: none !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col antialiased">
+
+  <!-- ÜST KONTROL & SİMÜLASYON BAR -->
+  <header class="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
+    <div class="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-400 font-medium flex items-center gap-1">
+          <i class="fa-solid fa-qrcode"></i> QR Mahal:
+        </span>
+        <select id="locationSelector" onchange="changeLocation(this.value)" class="bg-slate-800 text-amber-400 font-semibold px-2 py-1 rounded border border-slate-700 text-xs focus:ring-1 focus:ring-amber-400 outline-none"></select>
+        <button onclick="openAddLocationModal()" title="Yeni WC Noktası Ekle &amp; QR Oluştur" class="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-2 py-1 rounded text-xs flex items-center gap-1 shadow-sm">
+          <i class="fa-solid fa-plus-circle"></i> WC Ekle
+        </button>
+      </div>
+
+      <div class="flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
+        <button onclick="switchRole('guest')" id="btn-guest" class="px-3 py-1 rounded font-medium transition-all text-white bg-slate-700">Misafir</button>
+        <button onclick="switchRole('staff')" id="btn-staff" class="px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white">Personel</button>
+        <button onclick="switchRole('supervisor')" id="btn-supervisor" class="px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white">Şef Modülü</button>
+        <button onclick="switchRole('admin')" id="btn-admin" class="px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white">Yönetim Dashboard</button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span id="systemClock" class="font-mono text-emerald-400 font-bold bg-slate-950 px-2 py-0.5 rounded border border-slate-800">--:--:--</span>
+        <button onclick="testAlarm()" title="Siren Sesini Test Et" class="bg-rose-900/60 hover:bg-rose-800 text-rose-300 px-2 py-1 rounded border border-rose-700 flex items-center gap-1">
+          <i class="fa-solid fa-bell"></i> Siren
+        </button>
+        <div id="demoUserSection" class="flex items-center gap-1.5">
+          <button onclick="openAuthModal('login')" class="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-2.5 py-1 rounded text-xs shadow flex items-center gap-1">
+            <i class="fa-solid fa-right-to-bracket"></i> Giriş Yap
+          </button>
+          <button onclick="openAuthModal('register')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-2.5 py-1 rounded text-xs border border-slate-700 shadow flex items-center gap-1">
+            <i class="fa-solid fa-user-plus"></i> Kayıt Ol
+          </button>
+        </div>
+        <button onclick="resetAllData()" title="Fabrika Ayarlarına Dön" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-rotate-left"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ACİL ŞİKAYET & ESKALASYON BANNERI -->
+  <div id="urgentAlertBanner" class="hidden bg-rose-600 text-white px-4 py-2.5 shadow-xl transition-all">
+    <div class="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-2 text-sm">
+      <div class="flex items-center gap-2">
+        <span class="animate-ping w-2.5 h-2.5 rounded-full bg-white"></span>
+        <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+        <div>
+          <span class="font-bold" id="alertBannerTitle">🚨 ACİL ŞİKAYET BİLDİRİMİ:</span>
+          <span id="alertBannerText" class="ml-1 text-rose-100"></span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="goToIncidentManagement()" class="bg-white text-rose-700 font-bold px-3 py-1 rounded text-xs hover:bg-rose-50 shadow">Müdahale Et</button>
+        <button onclick="dismissAlertBanner()" class="text-white hover:text-rose-200 text-base px-1"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANA İÇERİK ALANI -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col items-center justify-start">
+
+    <!-- 1. MİSAFİR EKRANI -->
+    <div id="view-guest" class="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-gradient-to-r from-teal-600 to-emerald-700 text-white p-5 text-center">
+        <div class="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full mb-2">
+          <i class="fa-solid fa-restroom text-2xl"></i>
+        </div>
+        <h2 id="guest-location-title" class="text-xl font-bold">Zemin Kat - Erkek WC</h2>
+        <p class="text-xs text-teal-100 mt-0.5" id="guest-location-code">PRJ-A-ZEMIN-WC01</p>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+          <p class="text-xs font-semibold text-emerald-800 uppercase tracking-wider">Bu Alan En Son Temizlendi</p>
+          <div class="flex items-center justify-center gap-2 mt-1">
+            <i class="fa-regular fa-clock text-emerald-600 text-xl"></i>
+            <span id="guest-last-clean-time" class="text-3xl font-black text-emerald-700">--:--</span>
+          </div>
+          <p class="text-[11px] text-emerald-600 mt-1">Periyodik dezenfeksiyon standartlarına tabidir.</p>
+          <button onclick="openGuestScheduleModal()" class="mt-3 w-full bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-semibold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-2 shadow-sm transition">
+            <i class="fa-solid fa-list-check text-emerald-600"></i>
+            🕒 Bugünkü Temizlik Saatlerini Gör
+          </button>
+        </div>
+
+        <div class="border-t border-slate-200 pt-4">
+          <h3 class="text-sm font-bold text-slate-800 text-center mb-1">Tuvalet Temizliğini Nasıl Buldunuz?</h3>
+          <p class="text-xs text-slate-500 text-center mb-3">Lütfen deneyiminizi 1 tıkla seçiniz:</p>
+          <div class="grid grid-cols-3 gap-2.5">
+            <button onclick="handleRatingClick('good')" class="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 active:scale-95 transition-all group">
+              <span class="text-4xl group-hover:scale-110 transition-transform">😊</span>
+              <span class="text-xs font-bold text-emerald-800 mt-1">İyi / Temiz</span>
+            </button>
+            <button onclick="handleRatingClick('fair')" class="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-amber-200 bg-amber-50/50 hover:bg-amber-100 active:scale-95 transition-all group">
+              <span class="text-4xl group-hover:scale-110 transition-transform">😐</span>
+              <span class="text-xs font-bold text-amber-800 mt-1">Orta</span>
+            </button>
+            <button onclick="handleRatingClick('bad')" class="flex flex-col items-center justify-center p-3 rounded-xl border-2 border-rose-200 bg-rose-50/50 hover:bg-rose-100 active:scale-95 transition-all group">
+              <span class="text-4xl group-hover:scale-110 transition-transform">😡</span>
+              <span class="text-xs font-bold text-rose-800 mt-1">Kötü</span>
+            </button>
+          </div>
+
+          <!-- Kök Neden Paneli -->
+          <div id="rootCauseSection" class="hidden mt-4 pt-3 border-t border-rose-200 bg-rose-50/50 p-3 rounded-xl">
+            <div class="flex items-center gap-1.5 text-rose-800 font-bold text-xs mb-1">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span>Lütfen Karşılaştığınız Sorunları Seçiniz:</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-2">En az bir neden işaretlenmelidir:</p>
+            <div class="grid grid-cols-2 gap-2 text-xs" id="rootCauseOptions">
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="🧼 Sıvı Sabun Bitti" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">🧼 Sabun Yok</span>
+              </label>
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="🧻 Tuvalet Kağıdı Yok" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">🧻 Kağıt Yok</span>
+              </label>
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="💧 Zemin Islak / Kirli" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">💧 Zemin Islak</span>
+              </label>
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="👃 Kötü Koku Var" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">👃 Kötü Koku</span>
+              </label>
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="🗑️ Çöp Kovası Dolu" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">🗑️ Çöp Dolu</span>
+              </label>
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="🚽 Klozet / Pisuvar Kirli" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">🚽 Klozet Kirli</span>
+              </label>
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="🪞 Ayna / Lavabo Lekeli" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">🪞 Lavabo Kirli</span>
+              </label>
+              <label class="cause-card flex items-center gap-2 p-2 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-rose-400 select-none">
+                <input type="checkbox" value="🔧 Musluk / Ekipman Arızalı" class="rounded text-rose-600">
+                <span class="font-medium text-slate-700">🔧 Arıza Var</span>
+              </label>
+            </div>
+            <button onclick="submitNegativeFeedback()" class="mt-3 w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 px-4 rounded-lg shadow-md transition flex items-center justify-center gap-2 text-xs">
+              <i class="fa-solid fa-paper-plane"></i>
+              Şikayeti İlet & İlgili Şefe Bildir
+            </button>
+          </div>
+
+          <div id="guestThankYou" class="hidden mt-4 p-4 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-center">
+            <i class="fa-solid fa-circle-check text-2xl text-emerald-600 mb-1"></i>
+            <p class="font-bold text-sm">Geri Bildiriminiz Alındı!</p>
+            <p class="text-xs text-emerald-700">Geri bildiriminiz nöbetçi şefimize iletilmiştir.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. TEMİZLİK PERSONELİ EKRANI -->
+    <div id="view-staff" class="hidden w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-[10px] uppercase font-bold tracking-wider bg-blue-500/40 px-2 py-0.5 rounded">Saha Operasyon</span>
+            <h2 id="staff-location-title" class="text-lg font-bold mt-1">Zemin Kat - Erkek WC</h2>
+          </div>
+          <i class="fa-solid fa-broom text-2xl opacity-80"></i>
+        </div>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <!-- Şef Atamalı Acil Görev Kartı -->
+        <div id="staffAssignedTicketBox" class="hidden p-3 bg-amber-50 border-2 border-amber-400 rounded-xl space-y-2">
+          <div class="flex items-center justify-between text-amber-900 font-bold text-xs">
+            <span class="flex items-center gap-1.5"><i class="fa-solid fa-bell text-rose-600 animate-bounce"></i> ŞEF TARAFINDAN ACİL GÖREV ATANDI!</span>
+            <span id="ticketBadge" class="bg-amber-200 px-2 py-0.5 rounded text-[10px]">Müdahale Bekleniyor</span>
+          </div>
+          <p id="ticketDetailsText" class="text-xs text-amber-800"></p>
+          <button onclick="completeStaffIntervention()" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-xs shadow flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-check"></i> Müdahaleyi Tamamla ve Şefe Bildir
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="openPastCleaningsModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+            <i class="fa-solid fa-clock-rotate-left text-blue-600"></i> Önceki Temizlikler
+          </button>
+          <button onclick="openScheduleModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
+            <i class="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
+          </button>
+        </div>
+
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-700">Görevli Personel:</span>
+            <select id="staffNameSelect" class="bg-white border border-slate-300 rounded px-2.5 py-1 font-semibold text-xs text-slate-800 outline-none">
+              <option value="Ahmet Yılmaz">Ahmet Yılmaz (Sicil: 1042)</option>
+              <option value="Mehmet Demir">Mehmet Demir (Sicil: 1058)</option>
+              <option value="Ayşe Kaya">Ayşe Kaya (Sicil: 1081)</option>
+              <option value="Fatma Çelik">Fatma Çelik (Sicil: 1092)</option>
+            </select>
+          </div>
+          <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
+            <span class="font-medium text-slate-600">Sistem İşlem Saati (UTC+3):</span>
+            <span id="staffAutoTime" class="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">--:--</span>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-bold text-slate-700 block">Yapılan İşlemleri Onaylayınız:</label>
+          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+            <input type="checkbox" id="st-c1" checked class="rounded text-blue-600">
+            <span>Klozet, pisuvar ve lavabolar dezenfekte edildi</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+            <input type="checkbox" id="st-c2" checked class="rounded text-blue-600">
+            <span>Sıvı sabun, kağıt havlu ve tuvalet kağıdı ikmali yapıldı</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+            <input type="checkbox" id="st-c3" checked class="rounded text-blue-600">
+            <span>Çöp kovaları boşaltıldı ve yeni poşet takıldı</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+            <input type="checkbox" id="st-c4" checked class="rounded text-blue-600">
+            <span>Zemin mop ile silindi ve kurulandı</span>
+          </label>
+        </div>
+
+        <div>
+          <input type="text" id="staffOptionalNote" placeholder="Varsa arıza/sarf ikmal notu..." class="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500">
+        </div>
+
+        <button onclick="submitCleaning()" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-sm">
+          <i class="fa-solid fa-circle-check text-lg"></i>
+          Temizliği Tamamla ve Dijital Beyan Oluştur
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. TEMİZLİK ŞEFİ MODÜLÜ -->
+    <div id="view-supervisor" class="hidden w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-gradient-to-r from-purple-700 to-indigo-800 text-white p-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-[10px] uppercase font-bold tracking-wider bg-purple-500/40 px-2 py-0.5 rounded">Vardiya & Kalite Denetimi</span>
+            <h2 id="sup-location-title" class="text-lg font-bold mt-1">Zemin Kat - Erkek WC</h2>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] block opacity-80">Nöbetçi Şef</span>
+            <span class="text-xs font-bold" id="supCurrentActiveName">Kemal Şef</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <!-- Olay Yönetim Hub'ı -->
+        <div id="supIncidentHub" class="space-y-2"></div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="openPastCleaningsModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition">
+            <i class="fa-solid fa-clock-rotate-left text-purple-600"></i> Önceki Temizlikler
+          </button>
+          <button onclick="openScheduleModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition">
+            <i class="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
+          </button>
+        </div>
+
+        <button onclick="openSchedulePlannerModal()" class="w-full bg-purple-50 hover:bg-purple-100 text-purple-800 border-2 border-purple-300 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
+          <i class="fa-solid fa-sliders text-purple-700"></i>
+          ⚙️ Günlük Planı ve Süre Sapma Toleransını Güncelle
+        </button>
+
+        <div class="bg-purple-50/60 border border-purple-200 rounded-xl p-3 text-xs">
+          <span class="text-purple-800 font-bold block mb-1">Denetlenen Son Temizlik Beyanı:</span>
+          <div class="grid grid-cols-2 gap-2 text-slate-700">
+            <div>Personel: <strong id="sup-last-cleaner" class="text-purple-900">-</strong></div>
+            <div>İşlem Saati: <strong id="sup-last-time" class="text-purple-900">-</strong></div>
+            <div class="col-span-2">SLA Uyum Durumu: <span id="sup-sla-badge" class="px-2 py-0.5 rounded text-[11px] font-bold"></span></div>
+          </div>
+        </div>
+
+        <!-- Puansız Checklist v1.2 -->
+        <div class="border-t border-slate-200 pt-3">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Denetim Maddeleri (Checklist):</h3>
+            <span class="text-[10px] text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-mono font-bold">Şablon Sürümü: v1.2</span>
+          </div>
+
+          <div class="space-y-2 text-xs" id="supervisorChecklist">
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+              <span class="font-medium text-slate-700">1. Ayna ve Lavabolar Lekesiz</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="setCheckItem(1, true)" id="chk-1-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+                <button type="button" onclick="setCheckItem(1, false)" id="chk-1-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+              <span class="font-medium text-slate-700">2. Klozet ve Pisuvarlar Hijyenik</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="setCheckItem(2, true)" id="chk-2-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+                <button type="button" onclick="setCheckItem(2, false)" id="chk-2-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+              <span class="font-medium text-slate-700">3. Zemin Kuru ve Temiz</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="setCheckItem(3, true)" id="chk-3-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+                <button type="button" onclick="setCheckItem(3, false)" id="chk-3-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+              <span class="font-medium text-slate-700">4. Sabun / Kağıt Havlu Dolu</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="setCheckItem(4, true)" id="chk-4-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+                <button type="button" onclick="setCheckItem(4, false)" id="chk-4-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+              <span class="font-medium text-slate-700">5. Koku Durumu Ferah</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="setCheckItem(5, true)" id="chk-5-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+                <button type="button" onclick="setCheckItem(5, false)" id="chk-5-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+              </div>
+            </div>
+            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+              <span class="font-medium text-slate-700">6. Çöp Kovası Boş ve Poşetli</span>
+              <div class="flex gap-1">
+                <button type="button" onclick="setCheckItem(6, true)" id="chk-6-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+                <button type="button" onclick="setCheckItem(6, false)" id="chk-6-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <input type="text" id="supervisorNote" placeholder="Varsa şef denetim notu..." class="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-purple-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button onclick="submitSupervisorAudit(true)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow">
+            <i class="fa-solid fa-check-double"></i> Denetimi Onayla
+          </button>
+          <button onclick="submitSupervisorAudit(false)" class="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow">
+            <i class="fa-solid fa-triangle-exclamation"></i> Uygunsuzluk / Düzeltme Aç
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. YÖNETİM DASHBOARD -->
+    <div id="view-admin" class="hidden w-full max-w-5xl space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 class="text-xl font-black text-slate-900">Tesis Operasyonel Kalite ve SLA Performans Paneli</h2>
+          <p class="text-xs text-slate-500">Çalışan puanlaması içermeyen, süreç ve lokasyon odaklı analitik izleme</p>
+        </div>
+        <button onclick="exportReportToCSV()" class="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow-sm">
+          <i class="fa-solid fa-file-csv"></i> Denetim Raporu CSV İndir
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+          <span class="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
+          <span id="kpi-total-cleans" class="text-2xl font-black text-blue-600">0</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
+        </div>
+        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+          <span class="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
+          <span id="kpi-sla-ontime" class="text-2xl font-black text-emerald-600">0%</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Tam vaktinde</span>
+        </div>
+        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+          <span class="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
+          <span id="kpi-sla-outoftime" class="text-2xl font-black text-amber-600">0</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
+        </div>
+        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+          <span class="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (>Tol.)</span>
+          <span id="kpi-sla-notdone" class="text-2xl font-black text-rose-600">0</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
+        </div>
+        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
+          <span class="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
+          <span id="kpi-csat" class="text-2xl font-black text-purple-600">0%</span>
+          <span class="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
+        </div>
+      </div>
+
+      <!-- 5. WC NOKTALARI VE QR KOD YÖNETİM MERKEZİ (ADMIN PANELİ) -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-qrcode text-purple-600"></i> WC Noktaları ve QR Kod Yönetim Merkezi
+            </h3>
+            <p class="text-xs text-slate-500">Yeni WC mahali ekleme, kriptografik QR token üretimi, etiket yazdırma ve token yenileme</p>
+          </div>
+          <button onclick="openAddLocationModal()" class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow">
+            <i class="fa-solid fa-plus"></i> Yeni WC Noktası Ekle
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-3">Mahal Kodu & Adı</th>
+                <th class="py-2.5 px-3">Bina / Blok</th>
+                <th class="py-2.5 px-3">Nöbetçi / Yedek Şef</th>
+                <th class="py-2.5 px-3">Plan / Tol.</th>
+                <th class="py-2.5 px-3">QR Token</th>
+                <th class="py-2.5 px-3 text-right">Eylemler</th>
+              </tr>
+            </thead>
+            <tbody id="adminLocationsTableBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 5.1 SİSTEM KULLANICILARI VE PERSONEL YÖNETİM MERKEZİ (ADMIN PANELİ) -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-users-gear text-purple-600"></i> Sistem Kullanıcıları ve Personel Yönetim Merkezi
+            </h3>
+            <p class="text-xs text-slate-500">Sisteme kaydolan personeller ve yöneticiler, rol yetkileri ve kullanıcı hesap silme/ekleme</p>
+          </div>
+          <button onclick="openAddUserModal()" class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow">
+            <i class="fa-solid fa-user-plus"></i> Yeni Kullanıcı Ekle
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-3">Adı Soyadı</th>
+                <th class="py-2.5 px-3">Kullanıcı Adı</th>
+                <th class="py-2.5 px-3">Görevi / Rol</th>
+                <th class="py-2.5 px-3">Kayıt Tarihi</th>
+                <th class="py-2.5 px-3 text-right">Eylemler</th>
+              </tr>
+            </thead>
+            <tbody id="adminUsersTableBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Tüm Mahal Operasyon ve Vardiya Durumları</h3>
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+            <tr>
+              <th class="py-2 px-3">Mahal Kodu / Adı</th>
+              <th class="py-2 px-3">Nöbetçi / Yedek Şef</th>
+              <th class="py-2 px-3">Plan / Tolerans</th>
+              <th class="py-2 px-3">Son Temizlik</th>
+              <th class="py-2 px-3">Son Şef Denetimi</th>
+              <th class="py-2 px-3">Olay Durumu</th>
+            </tr>
+          </thead>
+          <tbody id="locationStatusTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Sistem Denetim İzi (Audit Trail)</h3>
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+            <tr>
+              <th class="py-2 px-3">Zaman Damgası (UTC+3)</th>
+              <th class="py-2 px-3">Mahal</th>
+              <th class="py-2 px-3">Olay / İşlem</th>
+              <th class="py-2 px-3">Kullanıcı Rolü</th>
+              <th class="py-2 px-3">İşlem Özeti / SLA Detayı</th>
+            </tr>
+          </thead>
+          <tbody id="auditLogsTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODALLAR -->
+  <!-- 1. Planlayıcı Modal -->
+  <div id="modalSchedulePlanner" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-purple-800 text-white p-4 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-sliders"></i> Plan ve Tolerans Parametreleri</h3>
+          <p class="text-[11px] text-purple-200">Operasyonel Parametre Yönetimi</p>
+        </div>
+        <button onclick="closeModal('modalSchedulePlanner')" class="text-white hover:text-purple-200 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="p-4 space-y-4 max-h-[80vh] overflow-y-auto">
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Düzenlenecek Mahal:</label>
+          <select id="plannerLocationSelect" onchange="loadPlannerDataForLocation(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-semibold text-purple-900 outline-none"></select>
+        </div>
+
+        <div class="bg-amber-50/70 border border-amber-200 p-3 rounded-xl space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+              <i class="fa-solid fa-stopwatch text-amber-700"></i> Süre Sapma Toleransı (Dakika):
+            </label>
+            <input type="number" id="plannerToleranceInput" min="1" max="60" value="15" oninput="updateTolerancePreview()" class="w-16 bg-white border border-amber-300 rounded-lg p-1 text-xs text-center font-bold text-amber-900 outline-none">
+          </div>
+          <div id="toleranceRulePreview" class="text-[11px] text-amber-800 bg-white p-2 rounded-lg border border-amber-100 space-y-0.5"></div>
+        </div>
+
+        <div class="bg-purple-50 p-3 rounded-xl border border-purple-200">
+          <span class="text-[11px] font-bold text-purple-900 block mb-1.5">⚡ Hızlı Saat Şablonları:</span>
+          <div class="grid grid-cols-3 gap-1.5 text-[10px]">
+            <button onclick="applyPlannerPreset('2hour')" class="bg-white border border-purple-300 text-purple-800 font-semibold py-1.5 rounded hover:bg-purple-100">2 Saatte Bir<br>(08 - 20)</button>
+            <button onclick="applyPlannerPreset('1hour')" class="bg-white border border-purple-300 text-purple-800 font-semibold py-1.5 rounded hover:bg-purple-100">1 Saatte Bir<br>(08 - 18)</button>
+            <button onclick="applyPlannerPreset('3shift')" class="bg-white border border-purple-300 text-purple-800 font-semibold py-1.5 rounded hover:bg-purple-100">3 Vardiya<br>(09, 14, 19)</button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div class="flex-1">
+            <label class="text-[11px] font-semibold text-slate-600 block mb-0.5">Yeni Saat Ekle:</label>
+            <input type="time" id="newScheduleTimeInput" value="09:00" class="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-800">
+          </div>
+          <div class="pt-4">
+            <button onclick="addNewScheduleTime()" class="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs py-2 px-4 rounded-lg flex items-center gap-1 shadow">
+              <i class="fa-solid fa-plus"></i> Ekle
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs font-bold text-slate-700">Mevcut Planlanan Saatler:</span>
+            <span id="plannerTotalCount" class="text-[11px] text-purple-700 font-bold">0 Slot</span>
+          </div>
+          <div id="plannerTimeChips" class="flex flex-wrap gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl min-h-[60px]"></div>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 p-3 flex items-center justify-between border-t border-slate-200">
+        <button onclick="closeModal('modalSchedulePlanner')" class="text-xs text-slate-500 hover:text-slate-700 font-semibold">Vazgeç</button>
+        <button onclick="savePlannerSchedule()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-5 rounded-lg flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-floppy-disk"></i> Plan ve Toleransı Kaydet
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Misafir Saat Listesi Modalı -->
+  <div id="modalGuestSchedule" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-emerald-600 text-white p-4 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-sm">Bugünkü Temizlik Saatleri</h3>
+          <p id="mGuestLocTitle" class="text-[11px] text-emerald-100"></p>
+        </div>
+        <button onclick="closeModal('modalGuestSchedule')" class="text-white hover:text-emerald-200 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-4 max-h-80 overflow-y-auto">
+        <p class="text-xs text-slate-500 mb-3">Bu mahalde bugün gerçekleştirilen temizlik saatleri kronolojik olarak aşağıdadır:</p>
+        <div id="mGuestCleanList" class="space-y-2"></div>
+      </div>
+      <div class="bg-slate-50 p-3 text-right">
+        <button onclick="closeModal('modalGuestSchedule')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-4 rounded-lg">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Önceki Temizlikler Modalı -->
+  <div id="modalPastCleanings" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-blue-600 text-white p-4 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-sm">Önceki Temizlik Kayıtları</h3>
+          <p id="mPastLocTitle" class="text-[11px] text-blue-100"></p>
+        </div>
+        <button onclick="closeModal('modalPastCleanings')" class="text-white hover:text-blue-200 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-4 max-h-96 overflow-y-auto">
+        <div id="mPastCleaningsList" class="space-y-2"></div>
+      </div>
+      <div class="bg-slate-50 p-3 text-right">
+        <button onclick="closeModal('modalPastCleanings')" class="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold py-1.5 px-4 rounded-lg">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Planlanan Saatler Modalı -->
+  <div id="modalSchedule" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-indigo-700 text-white p-4 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-sm">Günlük Planlanan Temizlik Saatleri</h3>
+          <p id="mScheduleLocTitle" class="text-[11px] text-indigo-100"></p>
+        </div>
+        <button onclick="closeModal('modalSchedule')" class="text-white hover:text-indigo-200 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-4 max-h-96 overflow-y-auto">
+        <div class="text-xs text-slate-600 mb-3 space-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+          <p class="font-semibold text-slate-800" id="mScheduleToleranceNotice">SLA Uyum Kriterleri</p>
+          <div class="flex flex-wrap gap-2 text-[10px] mt-1">
+            <span class="badge-ontime px-2 py-0.5 rounded font-bold">✓ Zamanında: 0 dk Sapma</span>
+            <span class="badge-outoftime px-2 py-0.5 rounded font-bold">⚠️ Plan Dışı: ± Tolerans</span>
+            <span class="badge-notdone px-2 py-0.5 rounded font-bold">✗ Yapılmadı: > Tolerans</span>
+          </div>
+        </div>
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+            <tr>
+              <th class="py-2 px-2.5">Planlanan Saat</th>
+              <th class="py-2 px-2.5">Gerçekleşen</th>
+              <th class="py-2 px-2.5">Personel</th>
+              <th class="py-2 px-2.5">SLA Durumu</th>
+            </tr>
+          </thead>
+          <tbody id="mScheduleTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+      <div class="bg-slate-50 p-3 text-right">
+        <button onclick="closeModal('modalSchedule')" class="bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold py-1.5 px-4 rounded-lg">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Yeni WC Ekleme Modalı (Admin) -->
+  <div id="modalAddLocation" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-purple-800 text-white p-4 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-plus-circle"></i> Yeni WC Noktası Tanımla</h3>
+          <p class="text-[11px] text-purple-200">Kriptografik Opaque QR Token Otomatik Üretilir</p>
+        </div>
+        <button onclick="closeModal('modalAddLocation')" class="text-white hover:text-purple-200 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="p-4 space-y-3 max-h-[80vh] overflow-y-auto text-xs">
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Mahal Adı: <span class="text-rose-500">*</span></label>
+          <input type="text" id="addLocName" placeholder="Örn: 2. Kat - Erkek WC" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-semibold text-slate-800 outline-none focus:border-purple-600">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Mahal Kodu:</label>
+            <input type="text" id="addLocCode" placeholder="Örn: PRJ-A-KAT2-WC04" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-slate-800 outline-none">
+          </div>
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Bina / Blok:</label>
+            <input type="text" id="addLocBuilding" value="Ana Bina" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-slate-800 outline-none">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Nöbetçi Asil Şef:</label>
+            <select id="addLocSupervisor" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-semibold text-slate-800 outline-none">
+              <option value="Kemal Şef">Kemal Şef</option>
+              <option value="Ayşe Şef">Ayşe Şef</option>
+              <option value="Mehmet Şef">Mehmet Şef</option>
+            </select>
+          </div>
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Nöbetçi Yedek Şef:</label>
+            <select id="addLocBackupSupervisor" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-semibold text-slate-800 outline-none">
+              <option value="Ayşe Şef">Ayşe Şef</option>
+              <option value="Kemal Şef">Kemal Şef</option>
+              <option value="Mehmet Şef">Mehmet Şef</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Tolerans (Dakika):</label>
+            <input type="number" id="addLocTolerance" value="15" min="1" max="60" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800 outline-none">
+          </div>
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Saat Planı Şablonu:</label>
+            <select id="addLocPreset" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-semibold text-slate-800 outline-none">
+              <option value="2hour">2 Saatte Bir (08-20)</option>
+              <option value="1hour">1 Saatte Bir (08-18)</option>
+              <option value="3shift">3 Vardiya (09, 14, 19)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="p-3 bg-purple-50 rounded-xl border border-purple-200 text-[11px] text-purple-900">
+          <i class="fa-solid fa-shield-halved text-purple-700"></i> Bu WC kaydedildiğinde güvenli, tahmin edilemez bir <strong>Opaque QR Token</strong> oluşturulur ve hemen yazdırılabilir etiket penceresi açılır.
+        </div>
+      </div>
+
+      <div class="bg-slate-50 p-3 flex items-center justify-between border-t border-slate-200">
+        <button onclick="closeModal('modalAddLocation')" class="text-xs text-slate-500 hover:text-slate-700 font-semibold">Vazgeç</button>
+        <button onclick="saveNewLocation()" class="bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold py-2 px-5 rounded-lg flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-floppy-disk"></i> Mahali Kaydet & QR Oluştur
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Yazdırılabilir QR Etiketi Modalı (Printable Sticker) -->
+  <div id="modalPrintSticker" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-slate-900 text-white p-3 flex items-center justify-between">
+        <span class="text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-print text-amber-400"></i> QR Mahal Etiketi</span>
+        <button onclick="closeModal('modalPrintSticker')" class="text-white hover:text-slate-300 text-base"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="p-5 flex flex-col items-center justify-center bg-slate-50">
+        <!-- FİZİKSEL ASILABİLİR ETİKET KARTI -->
+        <div id="stickerPrintCard" class="bg-white border-2 border-slate-800 rounded-2xl p-5 text-center shadow-lg w-full max-w-xs space-y-3">
+          <div class="border-b border-slate-200 pb-2">
+            <span class="text-[9px] uppercase font-black tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full block mb-1">
+              AKILLI WC TAKİP SİSTEMİ
+            </span>
+            <h2 id="stickerLocName" class="text-base font-black text-slate-900 leading-tight">Mahal Adı</h2>
+            <p id="stickerLocCode" class="text-[10px] font-mono font-bold text-slate-500 mt-0.5">KOD</p>
+          </div>
+
+          <!-- QR SVG Çıktı Kutusu -->
+          <div class="flex items-center justify-center p-2 bg-white rounded-xl">
+            <div id="stickerQrSvgContainer" class="w-44 h-44 flex items-center justify-center"></div>
+          </div>
+
+          <div class="border-t border-slate-200 pt-2 space-y-1">
+            <p class="text-[10px] font-bold text-slate-700 leading-tight">
+              Temizlik personeli beyanı ve ziyaretçi memnuniyet anketi için telefonunuzun kamerasıyla okutunuz.
+            </p>
+            <p id="stickerUrlText" class="text-[9px] font-mono text-slate-400 truncate"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white p-3.5 flex items-center justify-between border-t border-slate-200">
+        <button onclick="closeModal('modalPrintSticker')" class="text-xs text-slate-600 font-semibold px-3 py-1.5 rounded hover:bg-slate-100">Kapat</button>
+        <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1.5 shadow">
+          <i class="fa-solid fa-print"></i> Etiketi Yazdır
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: KULLANICI GİRİŞ YAP & KAYIT OL -->
+  <div id="modalAuth" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-slate-900 text-white p-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-shield-halved text-emerald-400 text-lg"></i>
+          <h3 id="modalAuthTitle" class="font-bold text-sm">Kullanıcı Girişi</h3>
+        </div>
+        <button onclick="closeModal('modalAuth')" class="text-slate-400 hover:text-white text-lg">✕</button>
+      </div>
+
+      <div class="flex border-b border-slate-200 bg-slate-50">
+        <button type="button" id="tabBtnLogin" onclick="switchAuthTab('login')" class="flex-1 py-3 text-xs font-bold text-center border-b-2 border-emerald-600 text-emerald-700 bg-white">
+          <i class="fa-solid fa-right-to-bracket mr-1.5"></i> Giriş Yap
+        </button>
+        <button type="button" id="tabBtnRegister" onclick="switchAuthTab('register')" class="flex-1 py-3 text-xs font-bold text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+          <i class="fa-solid fa-user-plus mr-1.5"></i> Kayıt Ol
+        </button>
+      </div>
+
+      <!-- Giriş Formu -->
+      <form id="formDemoLogin" onsubmit="handleDemoLogin(event)" class="p-5 space-y-4">
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Kullanıcı Adı</label>
+          <input type="text" id="demoLoginUsername" required placeholder="Örn: kemal veya ahmet" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Şifre</label>
+          <input type="password" id="demoLoginPassword" required placeholder="••••••••" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+        </div>
+        <button type="submit" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-right-to-bracket"></i> Giriş Yap
+        </button>
+
+        <div class="pt-2 border-t border-slate-100">
+          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-2 text-center">Hızlı Demo Giriş Seçenekleri</span>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" onclick="quickLogin('kemal', '123')" class="p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg text-left text-[11px] transition">
+              <strong class="block text-purple-900 font-bold">👑 Kemal Şef</strong>
+              <span class="text-purple-600 font-mono text-[10px]">kemal / 123</span>
+            </button>
+            <button type="button" onclick="quickLogin('ahmet', '123')" class="p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left text-[11px] transition">
+              <strong class="block text-blue-900 font-bold">🧹 Ahmet Temizlik</strong>
+              <span class="text-blue-600 font-mono text-[10px]">ahmet / 123</span>
+            </button>
+          </div>
+        </div>
+        <div class="text-center pt-1">
+          <span class="text-xs text-slate-500">Hesabınız yok mu? </span>
+          <button type="button" onclick="switchAuthTab('register')" class="text-xs text-emerald-700 hover:underline font-bold">Kayıt Olun</button>
+        </div>
+      </form>
+
+      <!-- Kayıt Ol Formu -->
+      <form id="formDemoRegister" onsubmit="handleDemoRegister(event)" class="p-5 space-y-3.5 hidden">
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Adı Soyadı <span class="text-rose-500">*</span></label>
+          <input type="text" id="demoRegFullName" required placeholder="Örn: Zeynep Kaya" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Kullanıcı Adı <span class="text-rose-500">*</span></label>
+          <input type="text" id="demoRegUsername" required placeholder="Örn: zeynep" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-mono">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Şifre <span class="text-rose-500">*</span></label>
+          <input type="password" id="demoRegPassword" required placeholder="En az 4 karakter" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Görevi / Rolü</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs border-blue-500 bg-blue-50 text-blue-900 font-bold">
+              <input type="radio" name="demoRegRole" value="employee" checked class="text-blue-600">
+              <span>🧹 Personel</span>
+            </label>
+            <label class="p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs border-slate-200 text-slate-600 hover:bg-slate-50">
+              <input type="radio" name="demoRegRole" value="supervisor" class="text-purple-600">
+              <span>👑 Şef / Denetmen</span>
+            </label>
+          </div>
+        </div>
+        <button type="submit" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-user-check"></i> Kayıt Ol ve Giriş Yap
+        </button>
+        <div class="text-center pt-1">
+          <span class="text-xs text-slate-500">Zaten hesabınız var mı? </span>
+          <button type="button" onclick="switchAuthTab('login')" class="text-xs text-emerald-700 hover:underline font-bold">Giriş Yapın</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: YENİ KULLANICI EKLE (ADMIN) -->
+  <div id="modalAddUser" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      <div class="bg-purple-800 text-white p-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-user-plus text-purple-300"></i>
+          <h3 class="font-bold text-sm">Yeni Kullanıcı Tanımla</h3>
+        </div>
+        <button onclick="closeModal('modalAddUser')" class="text-white hover:text-purple-200 text-lg">✕</button>
+      </div>
+      <form onsubmit="saveNewUser(event)" class="p-5 space-y-4">
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Adı Soyadı <span class="text-rose-500">*</span></label>
+          <input type="text" id="addAdminUserFullName" required placeholder="Örn: Mehmet Can" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Kullanıcı Adı <span class="text-rose-500">*</span></label>
+          <input type="text" id="addAdminUserUsername" required placeholder="Örn: mehmetcan" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none font-mono">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Şifre <span class="text-rose-500">*</span></label>
+          <input type="password" id="addAdminUserPassword" required placeholder="En az 4 karakter" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 block mb-1">Rol / Yetki</label>
+          <select id="addAdminUserRole" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white font-medium">
+            <option value="employee">🧹 Temizlik Personeli</option>
+            <option value="supervisor">👑 Şef / Denetmen / Yönetici</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modalAddUser')" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100">Vazgeç</button>
+          <button type="submit" class="bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold py-2 px-5 rounded-lg shadow-sm flex items-center gap-1.5">
+            <i class="fa-solid fa-check"></i> Kullanıcıyı Kaydet
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT ÇEKİRDEK KODU -->
+  <script>
+    const DEFAULT_LOCATIONS = [
+      {
+        id: 'WC-01',
+        code: 'PRJ-A-ZEMIN-WC01',
+        name: 'Zemin Kat - Erkek WC',
+        token: 'token-wc-01-a8f9b2',
+        toleranceMinutes: 15,
+        schedule: ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'],
+        currentSupervisor: { id: 'SUP-01', name: 'Kemal Şef' },
+        backupSupervisor: { id: 'SUP-02', name: 'Ayşe Şef' },
+        status: 'ACTIVE'
+      },
+      {
+        id: 'WC-02',
+        code: 'PRJ-A-ZEMIN-WC02',
+        name: 'Zemin Kat - Kadın WC',
+        token: 'token-wc-02-c4e1d7',
+        toleranceMinutes: 15,
+        schedule: ['08:30', '10:30', '12:30', '14:30', '16:30', '18:30', '20:30'],
+        currentSupervisor: { id: 'SUP-01', name: 'Kemal Şef' },
+        backupSupervisor: { id: 'SUP-02', name: 'Ayşe Şef' },
+        status: 'ACTIVE'
+      },
+      {
+        id: 'WC-03',
+        code: 'PRJ-A-KAT1-WC03',
+        name: '1. Kat - Personel WC',
+        token: 'token-wc-03-f3a9e0',
+        toleranceMinutes: 20,
+        schedule: ['09:00', '12:00', '15:00', '18:00'],
+        currentSupervisor: { id: 'SUP-02', name: 'Ayşe Şef' },
+        backupSupervisor: { id: 'SUP-01', name: 'Kemal Şef' },
+        status: 'ACTIVE'
+      }
+    const DEFAULT_USERS = [
+      { id: 'USR-01', fullName: 'Kemal Şef', username: 'kemal', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
+      { id: 'USR-02', fullName: 'Ayşe Şef', username: 'ayse', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
+      { id: 'USR-03', fullName: 'Sistem Yöneticisi', username: 'admin', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
+      { id: 'USR-04', fullName: 'Ahmet Temizlik', username: 'ahmet', password: '123', role: 'employee', createdAt: new Date().toISOString() },
+      { id: 'USR-05', fullName: 'Mehmet Hijyen', username: 'mehmet', password: '123', role: 'employee', createdAt: new Date().toISOString() },
+    ];
+
+    let state = {
+      currentRole: 'guest',
+      currentLocationId: 'WC-01',
+      locations: [],
+      cleaningLogs: [],
+      supervisorAudits: [],
+      feedbacks: [],
+      incidents: [],
+      notifications: [],
+      auditTrail: [],
+      users: [],
+      currentUser: null,
+      supervisorChecklistState: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true },
+      plannerWorkingSchedule: [],
+      plannerWorkingTolerance: 15
+    };
+
+    function initApp() {
+      const saved = localStorage.getItem('smart_wc_core_v5');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          state.locations = parsed.locations || DEFAULT_LOCATIONS;
+          state.cleaningLogs = parsed.cleaningLogs || [];
+          state.supervisorAudits = parsed.supervisorAudits || [];
+          state.feedbacks = parsed.feedbacks || [];
+          state.incidents = parsed.incidents || [];
+          state.notifications = parsed.notifications || [];
+          state.auditTrail = parsed.auditTrail || [];
+          state.users = (parsed.users && parsed.users.length > 0) ? parsed.users : DEFAULT_USERS;
+          state.currentUser = parsed.currentUser || null;
+        } catch (e) {
+          loadSeedData();
+        }
+      } else {
+        loadSeedData();
+      }
+
+      populateLocationSelectors();
+      updateDemoUserHeader();
+      updateClock();
+      setInterval(updateClock, 1000);
+      setInterval(checkIncidentEscalations, 10000);
+      refreshAllViews();
+    }
+
+    function saveState() {
+      localStorage.setItem('smart_wc_core_v5', JSON.stringify({
+        locations: state.locations,
+        cleaningLogs: state.cleaningLogs,
+        supervisorAudits: state.supervisorAudits,
+        feedbacks: state.feedbacks,
+        incidents: state.incidents,
+        notifications: state.notifications,
+        auditTrail: state.auditTrail,
+        users: state.users,
+        currentUser: state.currentUser
+      }));
+    }
+
+    function loadSeedData() {
+      state.locations = JSON.parse(JSON.stringify(DEFAULT_LOCATIONS));
+      state.users = JSON.parse(JSON.stringify(DEFAULT_USERS));
+      state.currentUser = null;
+      state.cleaningLogs = [
+        { id: 'CLN-101', locationId: 'WC-01', staffName: 'Ahmet Yılmaz', time: '08:00', targetSlot: '08:00', slaStatus: 'ON_TIME', diffMinutes: 0 },
+        { id: 'CLN-102', locationId: 'WC-01', staffName: 'Ahmet Yılmaz', time: '10:08', targetSlot: '10:00', slaStatus: 'OUT_OF_TIME', diffMinutes: 8 }
+      ];
+      state.supervisorAudits = [
+        { id: 'AUD-201', locationId: 'WC-01', supervisorName: 'Kemal Şef', time: '10:20', isApproved: true, templateVersion: 'v1.2', note: 'Sabah denetimi eksiksiz.' }
+      ];
+      state.feedbacks = [
+        { id: 'FB-301', locationId: 'WC-01', time: '09:15', rating: 'good', issues: [] }
+      ];
+      state.incidents = [];
+      state.notifications = [];
+      state.auditTrail = [
+        { timestamp: '08:00', locationId: 'WC-01', action: 'TEMIZLIK_KAYDI', userRole: 'Personel (Ahmet Y.)', summary: '08:00 vardiyası zamanında yapıldı.' }
+      ];
+      saveState();
+    }
+
+    function resetAllData() {
+      if (confirm("Tüm veri tabanı sıfırlanıp fabrika ayarlarına dönülsün mü?")) {
+        localStorage.removeItem('smart_wc_core_v5');
+        loadSeedData();
+        refreshAllViews();
+      }
+    }
+
+    function evaluateSLA(targetSlot, actualTime, toleranceMinutes = 15) {
+      if (!actualTime) return { status: 'WAITING', label: 'Bekliyor', badgeClass: 'badge-waiting', diff: null };
+      const [targetH, targetM] = targetSlot.split(':').map(Number);
+      const [actualH, actualM] = actualTime.split(':').map(Number);
+      const targetTotal = targetH * 60 + targetM;
+      const actualTotal = actualH * 60 + actualM;
+      const diff = actualTotal - targetTotal;
+      const absDiff = Math.abs(diff);
+
+      if (absDiff === 0) {
+        return { status: 'ON_TIME', label: 'Zamanında', badgeClass: 'badge-ontime', diff: 0 };
+      } else if (absDiff >= 1 && absDiff <= toleranceMinutes) {
+        const signText = diff > 0 ? `+${diff} dk` : `${diff} dk`;
+        return { status: 'OUT_OF_TIME', label: `Plan Dışı (${signText})`, badgeClass: 'badge-outoftime', diff };
+      } else {
+        const signText = diff > 0 ? `+${diff} dk gecikme` : `${diff} dk erken`;
+        return { status: 'NOT_DONE', label: `Yapılmadı (${signText})`, badgeClass: 'badge-notdone', diff };
+      }
+    }
+
+    function findClosestSlot(schedule, actualTime) {
+      if (!schedule || schedule.length === 0) return actualTime;
+      const [aH, aM] = actualTime.split(':').map(Number);
+      const actualTotal = aH * 60 + aM;
+      let closest = schedule[0];
+      let minDiff = 999999;
+      schedule.forEach(slot => {
+        const [sH, sM] = slot.split(':').map(Number);
+        const slotTotal = sH * 60 + sM;
+        const diff = Math.abs(actualTotal - slotTotal);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = slot;
+        }
+      });
+      return closest;
+    }
+
+    function switchRole(role) {
+      state.currentRole = role;
+      ['guest', 'staff', 'supervisor', 'admin'].forEach(r => {
+        const btn = document.getElementById(`btn-${r}`);
+        if (r === role) {
+          btn.className = "px-3 py-1 rounded font-medium transition-all text-white bg-slate-700 shadow-sm";
+        } else {
+          btn.className = "px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white";
+        }
+      });
+
+      document.getElementById('view-guest').classList.add('hidden');
+      document.getElementById('view-staff').classList.add('hidden');
+      document.getElementById('view-supervisor').classList.add('hidden');
+      document.getElementById('view-admin').classList.add('hidden');
+      document.getElementById(`view-${role}`).classList.remove('hidden');
+
+      document.getElementById('rootCauseSection').classList.add('hidden');
+      document.getElementById('guestThankYou').classList.add('hidden');
+
+      refreshAllViews();
+    }
+
+    function changeLocation(locId) {
+      state.currentLocationId = locId;
+      refreshAllViews();
+    }
+
+    function populateLocationSelectors() {
+      const locSelect = document.getElementById('locationSelector');
+      const plannerSelect = document.getElementById('plannerLocationSelect');
+      locSelect.innerHTML = '';
+      plannerSelect.innerHTML = '';
+      state.locations.forEach(loc => {
+        const opt1 = document.createElement('option');
+        opt1.value = loc.id;
+        opt1.textContent = `${loc.name} (${loc.code})`;
+        locSelect.appendChild(opt1);
+
+        const opt2 = document.createElement('option');
+        opt2.value = loc.id;
+        opt2.textContent = `${loc.name} (${loc.code})`;
+        plannerSelect.appendChild(opt2);
+      });
+      locSelect.value = state.currentLocationId;
+      plannerSelect.value = state.currentLocationId;
+    }
+
+    function refreshAllViews() {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId) || state.locations[0];
+      const curTolerance = curLoc.toleranceMinutes || 15;
+
+      document.getElementById('guest-location-title').textContent = curLoc.name;
+      document.getElementById('guest-location-code').textContent = curLoc.code;
+      document.getElementById('staff-location-title').textContent = curLoc.name;
+      document.getElementById('sup-location-title').textContent = curLoc.name;
+      document.getElementById('supCurrentActiveName').textContent = curLoc.currentSupervisor.name;
+
+      const locLogs = state.cleaningLogs.filter(l => l.locationId === curLoc.id);
+      const lastClean = locLogs.length > 0 ? locLogs[locLogs.length - 1] : null;
+      document.getElementById('guest-last-clean-time').textContent = lastClean ? lastClean.time : '--:--';
+
+      // Personel Açık Olay Kartı
+      const activeIncidentForStaff = state.incidents.find(inc => inc.locationId === curLoc.id && (inc.status === 'DISPATCHED' || inc.status === 'OPEN'));
+      const staffTicketBox = document.getElementById('staffAssignedTicketBox');
+      if (activeIncidentForStaff && activeIncidentForStaff.assignedStaffName) {
+        staffTicketBox.classList.remove('hidden');
+        document.getElementById('ticketBadge').textContent = `Görevli: ${activeIncidentForStaff.assignedStaffName}`;
+        document.getElementById('ticketDetailsText').textContent = `Şikayet Konuları: ${activeIncidentForStaff.issues.join(', ')} (${activeIncidentForStaff.time})`;
+      } else {
+        staffTicketBox.classList.add('hidden');
+      }
+
+      // Şef Bilgi Kartı
+      document.getElementById('sup-last-cleaner').textContent = lastClean ? lastClean.staffName : 'Kayıt Yok';
+      document.getElementById('sup-last-time').textContent = lastClean ? lastClean.time : '--:--';
+      const slaBadge = document.getElementById('sup-sla-badge');
+      if (lastClean) {
+        const sla = evaluateSLA(lastClean.targetSlot, lastClean.time, curTolerance);
+        slaBadge.textContent = sla.label;
+        slaBadge.className = `px-2 py-0.5 rounded text-[11px] font-bold ${sla.badgeClass}`;
+      } else {
+        slaBadge.textContent = 'Henüz Yapılmadı';
+        slaBadge.className = 'px-2 py-0.5 rounded text-[11px] font-bold badge-waiting';
+      }
+
+      renderSupervisorIncidentHub();
+      checkUrgentBannerStatus();
+
+      if (state.currentRole === 'admin') {
+        renderAdminDashboard();
+      }
+    }
+
+    function updateClock() {
+      const now = new Date();
+      const timeStr = now.toTimeString().substring(0, 8);
+      const shortTime = timeStr.substring(0, 5);
+      const clockEl = document.getElementById('systemClock');
+      if (clockEl) clockEl.textContent = timeStr;
+      const staffTime = document.getElementById('staffAutoTime');
+      if (staffTime) staffTime.textContent = shortTime;
+    }
+
+    function handleRatingClick(ratingType) {
+      const rootSection = document.getElementById('rootCauseSection');
+      const thankYou = document.getElementById('guestThankYou');
+      thankYou.classList.add('hidden');
+
+      if (ratingType === 'good' || ratingType === 'fair') {
+        rootSection.classList.add('hidden');
+        state.feedbacks.push({
+          id: 'FB-' + Date.now(),
+          locationId: state.currentLocationId,
+          time: getCurrentTime(),
+          rating: ratingType,
+          issues: []
+        });
+        addAuditLog(state.currentLocationId, 'ANKET_GIRIS', 'Misafir (Anonim)', `Olumlu anket girişi: ${ratingType === 'good' ? 'İyi' : 'Orta'}`);
+        saveState();
+
+        thankYou.classList.remove('hidden');
+        setTimeout(() => thankYou.classList.add('hidden'), 4000);
+      } else if (ratingType === 'bad') {
+        rootSection.classList.remove('hidden');
+      }
+    }
+
+    function submitNegativeFeedback() {
+      const checkboxes = document.querySelectorAll('#rootCauseOptions input[type="checkbox"]:checked');
+      const selectedIssues = Array.from(checkboxes).map(c => c.value);
+      if (selectedIssues.length === 0) {
+        alert("Lütfen en az bir şikayet nedeni seçiniz.");
+        return;
+      }
+
+      const time = getCurrentTime();
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+
+      state.feedbacks.push({
+        id: 'FB-' + Date.now(),
+        locationId: state.currentLocationId,
+        time: time,
+        rating: 'bad',
+        issues: selectedIssues
+      });
+
+      // 15 dk korelasyon penceresi: Açık incident varsa birleştir
+      let openIncident = state.incidents.find(inc => inc.locationId === state.currentLocationId && inc.status !== 'VERIFIED_CLOSED');
+      if (openIncident) {
+        openIncident.signalCount += 1;
+        selectedIssues.forEach(iss => {
+          if (!openIncident.issues.includes(iss)) openIncident.issues.push(iss);
+        });
+      } else {
+        const newIncident = {
+          id: 'INC-' + Math.floor(1000 + Math.random() * 9000),
+          locationId: state.currentLocationId,
+          time: time,
+          createdAtEpoch: Date.now(),
+          issues: selectedIssues,
+          signalCount: 1,
+          status: 'OPEN',
+          assignedStaffId: null,
+          assignedStaffName: null,
+          currentSupervisorId: curLoc.currentSupervisor.id,
+          currentSupervisorName: curLoc.currentSupervisor.name,
+          backupSupervisorId: curLoc.backupSupervisor.id,
+          backupSupervisorName: curLoc.backupSupervisor.name,
+          isEscalated: false,
+          resolvedAt: null,
+          resolutionNote: null
+        };
+        state.incidents.push(newIncident);
+        state.notifications.push({
+          id: 'NOTIF-' + Date.now(),
+          incidentId: newIncident.id,
+          recipientSupervisor: curLoc.currentSupervisor.name,
+          channel: 'WebPush / InApp',
+          status: 'DELIVERED',
+          timestamp: time
+        });
+      }
+
+      addAuditLog(state.currentLocationId, 'KOTU_ANKET_OLAY', 'Misafir (Anonim)', `Şikayet iletildi: ${selectedIssues.join(', ')}`);
+      saveState();
+      playAlarmSound();
+
+      document.getElementById('rootCauseSection').classList.add('hidden');
+      checkboxes.forEach(c => c.checked = false);
+
+      const thankYou = document.getElementById('guestThankYou');
+      thankYou.classList.remove('hidden');
+      setTimeout(() => thankYou.classList.add('hidden'), 4500);
+
+      refreshAllViews();
+    }
+
+    function renderSupervisorIncidentHub() {
+      const hub = document.getElementById('supIncidentHub');
+      hub.innerHTML = '';
+      const activeIncidents = state.incidents.filter(inc => inc.locationId === state.currentLocationId && inc.status !== 'VERIFIED_CLOSED');
+
+      if (activeIncidents.length === 0) {
+        hub.innerHTML = `
+          <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+            <span class="flex items-center gap-1.5 font-bold"><i class="fa-solid fa-circle-check text-emerald-600"></i> Bu Mahalde Bekleyen Açık Şikayet Yok</span>
+            <span class="text-[10px] text-emerald-600">Standart Operasyon</span>
+          </div>
+        `;
+        return;
+      }
+
+      activeIncidents.forEach(inc => {
+        const card = document.createElement('div');
+        if (inc.status === 'OPEN') {
+          card.className = "p-3 bg-rose-50 border-2 border-rose-400 rounded-xl space-y-2";
+          card.innerHTML = `
+            <div class="flex items-center justify-between text-xs font-bold text-rose-900">
+              <span class="flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation text-rose-600 animate-pulse"></i> YENİ ŞİKAYET (${inc.id})</span>
+              <span class="bg-rose-200 px-2 py-0.5 rounded text-[10px]">${inc.signalCount} Bildirim</span>
+            </div>
+            <p class="text-xs text-rose-800 font-medium">Tespit Edilen Sorunlar: <strong>${inc.issues.join(', ')}</strong> (${inc.time})</p>
+            <div class="flex items-center gap-2 pt-1">
+              <select id="assignStaffSelect_${inc.id}" class="flex-1 bg-white border border-slate-300 rounded p-1.5 text-xs font-semibold">
+                <option value="Ahmet Yılmaz">Ahmet Yılmaz (Görevli)</option>
+                <option value="Mehmet Demir">Mehmet Demir</option>
+                <option value="Ayşe Kaya">Ayşe Kaya</option>
+                <option value="Fatma Çelik">Fatma Çelik</option>
+              </select>
+              <button onclick="dispatchIncident('${inc.id}')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-1.5 px-3 rounded shadow">
+                📢 Personele Ata
+              </button>
+            </div>
+          `;
+        } else if (inc.status === 'DISPATCHED') {
+          card.className = "p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1.5 text-xs";
+          card.innerHTML = `
+            <div class="flex items-center justify-between font-bold text-amber-900">
+              <span class="flex items-center gap-1.5"><i class="fa-solid fa-person-running text-amber-600"></i> MÜDAHALE SÜRÜYOR (${inc.id})</span>
+              <span class="bg-amber-200 px-2 py-0.5 rounded text-[10px]">Atandı: ${inc.assignedStaffName}</span>
+            </div>
+            <p class="text-slate-600 text-[11px]">Sorunlar: ${inc.issues.join(', ')} | Personel sahada müdahale ediyor.</p>
+          `;
+        } else if (inc.status === 'RESOLVED_BY_STAFF') {
+          card.className = "p-3 bg-emerald-50 border-2 border-emerald-400 rounded-xl space-y-2 text-xs";
+          card.innerHTML = `
+            <div class="flex items-center justify-between font-bold text-emerald-900">
+              <span class="flex items-center gap-1.5"><i class="fa-solid fa-check-to-slot text-emerald-600"></i> MÜDAHALE TAMAMLANDI - ONAY BEKLİYOR (${inc.id})</span>
+              <span class="bg-emerald-200 px-2 py-0.5 rounded text-[10px]">${inc.resolvedAt}</span>
+            </div>
+            <p class="text-slate-700"><strong>${inc.assignedStaffName}</strong> müdahaleyi tamamladığını beyan etti. Not: <em>${inc.resolutionNote || 'Sorun giderildi'}</em></p>
+            <button onclick="verifyAndCloseIncident('${inc.id}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded shadow flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-stamp"></i> Doğrula ve Olayı Kapat (Verify & Close)
+            </button>
+          `;
+        }
+        hub.appendChild(card);
+      });
+    }
+
+    function dispatchIncident(incidentId) {
+      const inc = state.incidents.find(i => i.id === incidentId);
+      if (!inc) return;
+      const selectEl = document.getElementById(`assignStaffSelect_${incidentId}`);
+      inc.assignedStaffName = selectEl.value;
+      inc.status = 'DISPATCHED';
+      addAuditLog(inc.locationId, 'GOREV_ATANDI', inc.currentSupervisorName, `${inc.id} nolu şikayet ${inc.assignedStaffName} personeline atandı.`);
+      saveState();
+      alert(`Görev başarıyla ${inc.assignedStaffName} personeline atandı!`);
+      refreshAllViews();
+    }
+
+    function completeStaffIntervention() {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+      const inc = state.incidents.find(i => i.locationId === curLoc.id && (i.status === 'DISPATCHED' || i.status === 'OPEN'));
+      if (!inc) return;
+
+      const staffName = document.getElementById('staffNameSelect').value;
+      const note = document.getElementById('staffOptionalNote').value || 'Sarf malzemeleri ikmal edildi, dezenfeksiyon yapıldı.';
+
+      inc.status = 'RESOLVED_BY_STAFF';
+      inc.resolvedAt = getCurrentTime();
+      inc.assignedStaffName = staffName;
+      inc.resolutionNote = note;
+
+      addAuditLog(inc.locationId, 'PERSONEL_MUDAHALE', staffName, `${inc.id} nolu şikayete müdahale edildi ve şefe iletildi.`);
+      saveState();
+      alert("Müdahale tamamlandı ve Şef onayına gönderildi!");
+      refreshAllViews();
+    }
+
+    function verifyAndCloseIncident(incidentId) {
+      const inc = state.incidents.find(i => i.id === incidentId);
+      if (!inc) return;
+
+      inc.status = 'VERIFIED_CLOSED';
+      addAuditLog(inc.locationId, 'OLAY_KAPATILDI', inc.currentSupervisorName, `${inc.id} nolu şikayet denetlenerek başarıyla kapatıldı.`);
+      saveState();
+      alert("Olay şef tarafından doğrulandı ve başarıyla arşivlendi!");
+      refreshAllViews();
+    }
+
+    function checkIncidentEscalations() {
+      const now = Date.now();
+      let changed = false;
+      state.incidents.forEach(inc => {
+        if (inc.status === 'OPEN' && !inc.isEscalated) {
+          if (now - inc.createdAtEpoch > 120000) { // 2 dakika
+            inc.isEscalated = true;
+            inc.currentSupervisorName = inc.backupSupervisorName;
+            addAuditLog(inc.locationId, 'ESKALASYON', 'Sistem Otopilot', `${inc.id} nolu şikayet yanıtlanmadığı için YEDEK ŞEFE (${inc.backupSupervisorName}) devredildi!`);
+            changed = true;
+          }
+        }
+      });
+      if (changed) {
+        saveState();
+        refreshAllViews();
+      }
+    }
+
+    function checkUrgentBannerStatus() {
+      const banner = document.getElementById('urgentAlertBanner');
+      const openIncident = state.incidents.find(i => i.status === 'OPEN' || i.status === 'DISPATCHED');
+      if (openIncident) {
+        banner.classList.remove('hidden');
+        const loc = state.locations.find(l => l.id === openIncident.locationId);
+        document.getElementById('alertBannerTitle').textContent = openIncident.isEscalated ? '🚨 ESKALASYON UYARISI:' : '🚨 ACİL ŞİKAYET:';
+        document.getElementById('alertBannerText').textContent = `${loc ? loc.name : ''} - Sorunlar: ${openIncident.issues.join(', ')} (${openIncident.time}) [Sorumlu: ${openIncident.currentSupervisorName}]`;
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function goToIncidentManagement() {
+      const openIncident = state.incidents.find(i => i.status === 'OPEN' || i.status === 'DISPATCHED');
+      if (openIncident) {
+        state.currentLocationId = openIncident.locationId;
+        document.getElementById('locationSelector').value = openIncident.locationId;
+        switchRole('supervisor');
+      }
+    }
+
+    function dismissAlertBanner() {
+      document.getElementById('urgentAlertBanner').classList.add('hidden');
+    }
+
+    function submitCleaning() {
+      const staffName = document.getElementById('staffNameSelect').value;
+      const actualTime = getCurrentTime();
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+      const tolerance = curLoc.toleranceMinutes || 15;
+      const targetSlot = findClosestSlot(curLoc.schedule, actualTime);
+      const sla = evaluateSLA(targetSlot, actualTime, tolerance);
+
+      state.cleaningLogs.push({
+        id: 'CLN-' + Date.now(),
+        locationId: state.currentLocationId,
+        staffName: staffName,
+        time: actualTime,
+        targetSlot: targetSlot,
+        slaStatus: sla.status,
+        diffMinutes: sla.diff
+      });
+
+      const openTicket = state.incidents.find(i => i.locationId === state.currentLocationId && (i.status === 'DISPATCHED' || i.status === 'OPEN'));
+      if (openTicket) {
+        openTicket.status = 'RESOLVED_BY_STAFF';
+        openTicket.resolvedAt = actualTime;
+        openTicket.assignedStaffName = staffName;
+      }
+
+      addAuditLog(state.currentLocationId, 'TEMIZLIK_BEYANI', staffName, `Periyodik temizlik tamamlandı. SLA: ${sla.label}`);
+      saveState();
+      alert(`Temizlik beyanı başarıyla oluşturuldu!\nSaat: ${actualTime}\nSLA Durumu: ${sla.label}`);
+      refreshAllViews();
+    }
+
+    function setCheckItem(index, isApproved) {
+      state.supervisorChecklistState[index] = isApproved;
+      const yesBtn = document.getElementById(`chk-${index}-yes`);
+      const noBtn = document.getElementById(`chk-${index}-no`);
+      if (isApproved) {
+        yesBtn.className = "px-2.5 py-1 rounded font-bold bg-emerald-600 text-white";
+        noBtn.className = "px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600";
+      } else {
+        yesBtn.className = "px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600";
+        noBtn.className = "px-2.5 py-1 rounded font-bold bg-rose-600 text-white";
+      }
+    }
+
+    function submitSupervisorAudit(isApproved) {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+      const note = document.getElementById('supervisorNote').value;
+
+      state.supervisorAudits.push({
+        id: 'AUD-' + Date.now(),
+        locationId: state.currentLocationId,
+        supervisorName: curLoc.currentSupervisor.name,
+        time: getCurrentTime(),
+        templateVersion: 'v1.2',
+        isApproved: isApproved,
+        checklist: { ...state.supervisorChecklistState },
+        note: note || (isApproved ? 'Eksiksiz onaylandı.' : 'Uygunsuzluk tespit edildi.')
+      });
+
+      if (!isApproved) {
+        state.incidents.push({
+          id: 'INC-' + Math.floor(1000 + Math.random() * 9000),
+          locationId: state.currentLocationId,
+          time: getCurrentTime(),
+          createdAtEpoch: Date.now(),
+          issues: ['⚠️ Şef Denetimi Uygunsuzluğu'],
+          signalCount: 1,
+          status: 'OPEN',
+          assignedStaffId: null,
+          assignedStaffName: null,
+          currentSupervisorId: curLoc.currentSupervisor.id,
+          currentSupervisorName: curLoc.currentSupervisor.name,
+          backupSupervisorId: curLoc.backupSupervisor.id,
+          backupSupervisorName: curLoc.backupSupervisor.name,
+          isEscalated: false,
+          resolvedAt: null,
+          resolutionNote: null
+        });
+      }
+
+      addAuditLog(state.currentLocationId, 'SEF_DENETIMI', curLoc.currentSupervisor.name, isApproved ? 'Denetim eksiksiz onaylandı.' : 'Uygunsuzluk tespit edildi ve düzeltme bileti açıldı.');
+      saveState();
+      alert(isApproved ? "Denetim başarıyla onaylandı." : "Uygunsuzluk kaydedildi ve düzeltici iş emri oluşturuldu!");
+      document.getElementById('supervisorNote').value = '';
+      refreshAllViews();
+    }
+
+    function openSchedulePlannerModal() {
+      const plannerSelect = document.getElementById('plannerLocationSelect');
+      plannerSelect.value = state.currentLocationId;
+      loadPlannerDataForLocation(state.currentLocationId);
+      document.getElementById('modalSchedulePlanner').classList.remove('hidden');
+    }
+
+    function loadPlannerDataForLocation(locId) {
+      const loc = state.locations.find(l => l.id === locId);
+      if (!loc) return;
+      state.plannerWorkingSchedule = [...(loc.schedule || [])].sort();
+      state.plannerWorkingTolerance = loc.toleranceMinutes || 15;
+      document.getElementById('plannerToleranceInput').value = state.plannerWorkingTolerance;
+      updateTolerancePreview();
+      renderPlannerChips();
+    }
+
+    function updateTolerancePreview() {
+      const tol = parseInt(document.getElementById('plannerToleranceInput').value) || 15;
+      state.plannerWorkingTolerance = tol;
+      const previewBox = document.getElementById('toleranceRulePreview');
+      previewBox.innerHTML = `
+        <div>• <strong>Zamanında (Yeşil):</strong> Tam planlanan saatte (0 dk).</div>
+        <div>• <strong>Plan Dışı (Sarı):</strong> ±1 ile ±${tol} dk tolerans dahilinde.</div>
+        <div>• <strong>Yapılmadı (Kırmızı):</strong> +${tol + 1} dk ve üzeri gecikmeler.</div>
+      `;
+    }
+
+    function renderPlannerChips() {
+      const container = document.getElementById('plannerTimeChips');
+      const countEl = document.getElementById('plannerTotalCount');
+      container.innerHTML = '';
+      countEl.textContent = `${state.plannerWorkingSchedule.length} Slot`;
+      state.plannerWorkingSchedule.forEach((timeStr, idx) => {
+        const chip = document.createElement('div');
+        chip.className = "inline-flex items-center gap-1.5 bg-purple-100 border border-purple-300 text-purple-900 font-bold px-2.5 py-1 rounded-lg text-xs shadow-sm";
+        chip.innerHTML = `
+          <i class="fa-regular fa-clock text-purple-700"></i>
+          <span>${timeStr}</span>
+          <button onclick="removeScheduleTime(${idx})" class="ml-1 text-purple-400 hover:text-rose-600 font-black">×</button>
+        `;
+        container.appendChild(chip);
+      });
+    }
+
+    function addNewScheduleTime() {
+      const val = document.getElementById('newScheduleTimeInput').value;
+      if (!val) return;
+      if (state.plannerWorkingSchedule.includes(val)) {
+        alert("Bu saat planda zaten kayıtlı!");
+        return;
+      }
+      state.plannerWorkingSchedule.push(val);
+      state.plannerWorkingSchedule.sort();
+      renderPlannerChips();
+    }
+
+    function removeScheduleTime(index) {
+      state.plannerWorkingSchedule.splice(index, 1);
+      renderPlannerChips();
+    }
+
+    function applyPlannerPreset(type) {
+      if (type === '2hour') state.plannerWorkingSchedule = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+      else if (type === '1hour') state.plannerWorkingSchedule = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+      else if (type === '3shift') state.plannerWorkingSchedule = ['09:00', '14:00', '19:00'];
+      renderPlannerChips();
+    }
+
+    function savePlannerSchedule() {
+      const locId = document.getElementById('plannerLocationSelect').value;
+      const loc = state.locations.find(l => l.id === locId);
+      if (!loc) return;
+      loc.schedule = [...state.plannerWorkingSchedule].sort();
+      loc.toleranceMinutes = parseInt(document.getElementById('plannerToleranceInput').value) || 15;
+      addAuditLog(loc.id, 'PLAN_GUNCELLEME', loc.currentSupervisor.name, `Temizlik saatleri ve tolerans (±${loc.toleranceMinutes} dk) güncellendi.`);
+      saveState();
+      closeModal('modalSchedulePlanner');
+      alert(`"${loc.name}" için plan ve tolerans başarıyla kaydedildi!`);
+      refreshAllViews();
+    }
+
+    function openGuestScheduleModal() {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+      document.getElementById('mGuestLocTitle').textContent = curLoc.name;
+      const listContainer = document.getElementById('mGuestCleanList');
+      listContainer.innerHTML = '';
+      const logs = state.cleaningLogs.filter(l => l.locationId === curLoc.id);
+      if (logs.length === 0) {
+        listContainer.innerHTML = `<p class="text-xs text-slate-400 italic">Bugün henüz temizlik beyanı girilmemiştir.</p>`;
+      } else {
+        logs.forEach(l => {
+          const item = document.createElement('div');
+          item.className = "flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-lg text-xs";
+          item.innerHTML = `
+            <span class="font-bold text-emerald-900 flex items-center gap-1.5"><i class="fa-solid fa-check text-emerald-600"></i> Temizlik Yapıldı</span>
+            <span class="font-mono font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-300">${l.time}</span>
+          `;
+          listContainer.appendChild(item);
+        });
+      }
+      document.getElementById('modalGuestSchedule').classList.remove('hidden');
+    }
+
+    function openPastCleaningsModal() {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+      const tol = curLoc.toleranceMinutes || 15;
+      document.getElementById('mPastLocTitle').textContent = curLoc.name;
+      const listContainer = document.getElementById('mPastCleaningsList');
+      listContainer.innerHTML = '';
+      const logs = state.cleaningLogs.filter(l => l.locationId === curLoc.id);
+      if (logs.length === 0) {
+        listContainer.innerHTML = `<p class="text-xs text-slate-400 italic">Geçmiş temizlik beyanı bulunmuyor.</p>`;
+      } else {
+        logs.forEach(l => {
+          const sla = evaluateSLA(l.targetSlot, l.time, tol);
+          const item = document.createElement('div');
+          item.className = "p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs";
+          item.innerHTML = `
+            <div class="flex items-center justify-between">
+              <strong class="text-slate-800 text-sm font-bold">${l.staffName}</strong>
+              <span class="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">${l.time}</span>
+            </div>
+            <div class="flex items-center justify-between text-slate-500 text-[11px]">
+              <span>Hedef Slot: ${l.targetSlot}</span>
+              <span class="${sla.badgeClass} px-2 py-0.5 rounded font-bold">${sla.label}</span>
+            </div>
+          `;
+          listContainer.appendChild(item);
+        });
+      }
+      document.getElementById('modalPastCleanings').classList.remove('hidden');
+    }
+
+    function openScheduleModal() {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+      const tol = curLoc.toleranceMinutes || 15;
+      document.getElementById('mScheduleLocTitle').textContent = curLoc.name;
+      document.getElementById('mScheduleToleranceNotice').textContent = `SLA Uyum Kriterleri (Geçerli Tolerans: ±${tol} dk):`;
+      const tbody = document.getElementById('mScheduleTableBody');
+      tbody.innerHTML = '';
+      const locLogs = state.cleaningLogs.filter(l => l.locationId === curLoc.id);
+
+      curLoc.schedule.forEach(slot => {
+        const matchedLog = locLogs.find(l => l.targetSlot === slot);
+        const actualTime = matchedLog ? matchedLog.time : null;
+        const staff = matchedLog ? matchedLog.staffName : '-';
+        const sla = evaluateSLA(slot, actualTime, tol);
+
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-2.5 px-2.5 font-bold font-mono text-slate-800">${slot}</td>
+          <td class="py-2.5 px-2.5 font-mono text-slate-700">${actualTime || '--:--'}</td>
+          <td class="py-2.5 px-2.5 text-slate-600">${staff}</td>
+          <td class="py-2.5 px-2.5">
+            <span class="${sla.badgeClass} px-2 py-0.5 rounded font-bold text-[10px] whitespace-nowrap">${sla.label}</span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('modalSchedule').classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function renderAdminDashboard() {
+      const totalCleans = state.cleaningLogs.length;
+      document.getElementById('kpi-total-cleans').textContent = totalCleans;
+
+      let onTimeCount = 0;
+      let outOfTimeCount = 0;
+      let notDoneCount = 0;
+
+      state.cleaningLogs.forEach(l => {
+        const loc = state.locations.find(x => x.id === l.locationId);
+        const tol = loc ? loc.toleranceMinutes || 15 : 15;
+        const sla = evaluateSLA(l.targetSlot, l.time, tol);
+        if (sla.status === 'ON_TIME') onTimeCount++;
+        else if (sla.status === 'OUT_OF_TIME') outOfTimeCount++;
+        else if (sla.status === 'NOT_DONE') notDoneCount++;
+      });
+
+      const onTimeRate = totalCleans > 0 ? Math.round((onTimeCount / totalCleans) * 100) : 0;
+      document.getElementById('kpi-sla-ontime').textContent = `${onTimeRate}%`;
+      document.getElementById('kpi-sla-outoftime').textContent = outOfTimeCount;
+      document.getElementById('kpi-sla-notdone').textContent = notDoneCount;
+
+      const totalFeedbacks = state.feedbacks.length;
+      const goodFeedbacks = state.feedbacks.filter(f => f.rating === 'good').length;
+      const csatRate = totalFeedbacks > 0 ? Math.round((goodFeedbacks / totalFeedbacks) * 100) : 100;
+      document.getElementById('kpi-csat').textContent = `${csatRate}%`;
+
+      renderParetoChart();
+      renderAdminLocationsTable();
+      renderAdminUsersTable();
+      renderLocationStatusTable();
+      renderAuditLogsTable();
+    }
+
+    function renderAdminLocationsTable() {
+      const tbody = document.getElementById('adminLocationsTableBody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      state.locations.forEach(loc => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-2.5 px-3">
+            <strong class="text-slate-800 text-xs">${loc.name}</strong>
+            <span class="block text-[10px] text-slate-400 font-mono">${loc.code}</span>
+          </td>
+          <td class="py-2.5 px-3 text-slate-600">${loc.building || 'Ana Bina'}</td>
+          <td class="py-2.5 px-3 text-slate-700">
+            <span>${loc.currentSupervisor ? loc.currentSupervisor.name : 'Kemal Şef'}</span>
+            <span class="block text-[10px] text-slate-400">Yedek: ${loc.backupSupervisor ? loc.backupSupervisor.name : 'Ayşe Şef'}</span>
+          </td>
+          <td class="py-2.5 px-3">
+            <span class="font-mono font-bold text-purple-700 text-[11px]">${loc.schedule ? loc.schedule.length : 0} Slot</span>
+            <span class="block text-[10px] text-slate-400">±${loc.toleranceMinutes || 15} dk</span>
+          </td>
+          <td class="py-2.5 px-3">
+            <span class="font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] select-all">${loc.token}</span>
+          </td>
+          <td class="py-2.5 px-3 text-right">
+            <div class="flex items-center justify-end gap-1.5">
+              <button onclick="openPrintStickerModal('${loc.id}')" title="Yazdırılabilir QR Etiketi" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-1 rounded text-[10px] shadow-sm flex items-center gap-1">
+                <i class="fa-solid fa-qrcode"></i> QR Etiketi
+              </button>
+              <button onclick="regenerateLocationToken('${loc.id}')" title="Tokenı İptal Et ve Yeni Üret" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-1 rounded text-[10px] shadow-sm flex items-center gap-1">
+                <i class="fa-solid fa-rotate"></i> Yenile
+              </button>
+              <button onclick="deleteLocation('${loc.id}')" title="Mahali Sil" class="text-rose-500 hover:text-rose-700 px-1 py-1 text-xs">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // --- KULLANICI YÖNETİMİ & GİRİŞ/KAYIT FONKSİYONLARI ---
+    function updateDemoUserHeader() {
+      const container = document.getElementById('demoUserSection');
+      if (!container) return;
+      if (state.currentUser) {
+        const isSup = state.currentUser.role === 'supervisor';
+        container.innerHTML = `
+          <span class="bg-slate-800 px-2.5 py-1 rounded text-slate-300 text-xs flex items-center gap-1.5 border border-slate-700">
+            <i class="fa-solid fa-user-circle text-emerald-400"></i>
+            <span class="font-bold text-white">${state.currentUser.fullName}</span>
+            <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded ${isSup ? 'bg-purple-950 text-purple-300 border border-purple-800' : 'bg-blue-950 text-blue-300 border border-blue-800'}">
+              ${isSup ? 'Şef' : 'Personel'}
+            </span>
+          </span>
+          <button onclick="demoLogout()" class="bg-red-800/80 hover:bg-red-700 text-white px-2 py-1 rounded text-xs transition flex items-center gap-1" title="Çıkış Yap">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          </button>
+        `;
+      } else {
+        container.innerHTML = `
+          <button onclick="openAuthModal('login')" class="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-2.5 py-1 rounded text-xs shadow flex items-center gap-1">
+            <i class="fa-solid fa-right-to-bracket"></i> Giriş Yap
+          </button>
+          <button onclick="openAuthModal('register')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold px-2.5 py-1 rounded text-xs border border-slate-700 shadow flex items-center gap-1">
+            <i class="fa-solid fa-user-plus"></i> Kayıt Ol
+          </button>
+        `;
+      }
+    }
+
+    function openAuthModal(tab) {
+      switchAuthTab(tab);
+      document.getElementById('modalAuth').classList.remove('hidden');
+    }
+
+    function switchAuthTab(tab) {
+      const formLogin = document.getElementById('formDemoLogin');
+      const formRegister = document.getElementById('formDemoRegister');
+      const btnLogin = document.getElementById('tabBtnLogin');
+      const btnRegister = document.getElementById('tabBtnRegister');
+      const title = document.getElementById('modalAuthTitle');
+
+      if (tab === 'login') {
+        formLogin.classList.remove('hidden');
+        formRegister.classList.add('hidden');
+        btnLogin.className = "flex-1 py-3 text-xs font-bold text-center border-b-2 border-emerald-600 text-emerald-700 bg-white";
+        btnRegister.className = "flex-1 py-3 text-xs font-bold text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700";
+        title.textContent = "Kullanıcı Girişi";
+      } else {
+        formLogin.classList.add('hidden');
+        formRegister.classList.remove('hidden');
+        btnRegister.className = "flex-1 py-3 text-xs font-bold text-center border-b-2 border-emerald-600 text-emerald-700 bg-white";
+        btnLogin.className = "flex-1 py-3 text-xs font-bold text-center border-b-2 border-transparent text-slate-500 hover:text-slate-700";
+        title.textContent = "Yeni Kullanıcı Kaydı";
+      }
+    }
+
+    function quickLogin(username, password) {
+      document.getElementById('demoLoginUsername').value = username;
+      document.getElementById('demoLoginPassword').value = password;
+      handleDemoLogin(new Event('submit'));
+    }
+
+    function handleDemoLogin(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const uName = document.getElementById('demoLoginUsername').value.trim().toLowerCase();
+      const pwd = document.getElementById('demoLoginPassword').value.trim();
+
+      const user = state.users.find(u => u.username.toLowerCase() === uName && u.password === pwd);
+      if (!user) {
+        alert("Kullanıcı adı veya şifre hatalı!\n(İpucu: 'kemal'/'123' veya 'ahmet'/'123')");
+        return;
+      }
+
+      state.currentUser = user;
+      saveState();
+      updateDemoUserHeader();
+      closeModal('modalAuth');
+
+      if (user.role === 'supervisor') {
+        switchRole('supervisor');
+      } else {
+        switchRole('staff');
+      }
+      addAuditLog(state.currentLocationId, 'KULLANICI_GIRIS', user.role, `${user.fullName} (@${user.username}) giriş yaptı.`);
+      refreshAllViews();
+    }
+
+    function handleDemoRegister(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const fullName = document.getElementById('demoRegFullName').value.trim();
+      const username = document.getElementById('demoRegUsername').value.trim().toLowerCase();
+      const password = document.getElementById('demoRegPassword').value.trim();
+      const roleElem = document.querySelector('input[name="demoRegRole"]:checked');
+      const role = roleElem ? roleElem.value : 'employee';
+
+      if (!fullName || !username || !password) {
+        alert("Lütfen tüm alanları doldurunuz.");
+        return;
+      }
+
+      if (state.users.some(u => u.username.toLowerCase() === username)) {
+        alert(`"${username}" kullanıcı adı zaten kullanılıyor!`);
+        return;
+      }
+
+      const newUser = {
+        id: 'USR-' + (state.users.length + 1).toString().padStart(2, '0'),
+        fullName,
+        username,
+        password,
+        role,
+        createdAt: new Date().toISOString()
+      };
+
+      state.users.push(newUser);
+      state.currentUser = newUser;
+      saveState();
+      updateDemoUserHeader();
+      closeModal('modalAuth');
+
+      if (role === 'supervisor') {
+        switchRole('supervisor');
+      } else {
+        switchRole('staff');
+      }
+      addAuditLog(state.currentLocationId, 'KULLANICI_KAYIT', role, `Yeni kullanıcı kaydı: ${fullName} (@${username})`);
+      renderAdminUsersTable();
+      refreshAllViews();
+    }
+
+    function demoLogout() {
+      state.currentUser = null;
+      saveState();
+      updateDemoUserHeader();
+      switchRole('guest');
+      refreshAllViews();
+    }
+
+    function renderAdminUsersTable() {
+      const tbody = document.getElementById('adminUsersTableBody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      state.users.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50 transition";
+        const isSelf = state.currentUser && state.currentUser.id === u.id;
+        const isSup = u.role === 'supervisor';
+
+        tr.innerHTML = `
+          <td class="py-2.5 px-3">
+            <span class="font-bold text-slate-800 flex items-center gap-1.5">
+              <span class="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-[10px] flex items-center justify-center font-bold">
+                ${u.fullName.charAt(0).toUpperCase()}
+              </span>
+              ${u.fullName}
+              ${isSelf ? '<span class="bg-emerald-100 text-emerald-800 text-[9px] px-1 rounded font-bold">Siz</span>' : ''}
+            </span>
+          </td>
+          <td class="py-2.5 px-3 font-mono text-slate-600 text-xs">@${u.username}</td>
+          <td class="py-2.5 px-3">
+            <span class="inline-flex items-center gap-1 ${isSup ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'} font-bold px-2 py-0.5 rounded text-[10px]">
+              <i class="fa-solid ${isSup ? 'fa-crown' : 'fa-broom'}"></i>
+              ${isSup ? 'Şef / Yönetici' : 'Temizlik Personeli'}
+            </span>
+          </td>
+          <td class="py-2.5 px-3 text-slate-500 font-mono text-[10px]">${new Date(u.createdAt).toLocaleDateString('tr-TR')}</td>
+          <td class="py-2.5 px-3 text-right">
+            <button onclick="deleteDemoUser('${u.id}')" ${isSelf ? 'disabled' : ''} class="text-rose-500 hover:text-rose-700 font-medium px-2 py-1 rounded text-xs transition disabled:opacity-30 disabled:cursor-not-allowed" title="Kullanıcıyı Sil">
+              <i class="fa-solid fa-trash"></i> Sil
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openAddUserModal() {
+      document.getElementById('addAdminUserFullName').value = '';
+      document.getElementById('addAdminUserUsername').value = '';
+      document.getElementById('addAdminUserPassword').value = '';
+      document.getElementById('modalAddUser').classList.remove('hidden');
+    }
+
+    function saveNewUser(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const fullName = document.getElementById('addAdminUserFullName').value.trim();
+      const username = document.getElementById('addAdminUserUsername').value.trim().toLowerCase();
+      const password = document.getElementById('addAdminUserPassword').value.trim();
+      const role = document.getElementById('addAdminUserRole').value;
+
+      if (!fullName || !username || !password) {
+        alert("Lütfen tüm alanları doldurunuz.");
+        return;
+      }
+
+      if (state.users.some(u => u.username.toLowerCase() === username)) {
+        alert(`"${username}" kullanıcı adı zaten kayıtlı!`);
+        return;
+      }
+
+      const newUser = {
+        id: 'USR-' + (state.users.length + 1).toString().padStart(2, '0'),
+        fullName,
+        username,
+        password,
+        role,
+        createdAt: new Date().toISOString()
+      };
+
+      state.users.push(newUser);
+      addAuditLog(state.currentLocationId, 'ADMIN_KULLANICI_EKLE', 'Yönetici', `Yeni kullanıcı oluşturuldu: ${fullName} (@${username})`);
+      saveState();
+      closeModal('modalAddUser');
+      renderAdminUsersTable();
+    }
+
+    function deleteDemoUser(id) {
+      const target = state.users.find(u => u.id === id);
+      if (!target) return;
+      if (state.currentUser && state.currentUser.id === id) {
+        alert("Aktif kendi oturumunuzu silemezsiniz.");
+        return;
+      }
+      if (!confirm(`"${target.fullName}" (@${target.username}) kullanıcısını silmek istediğinize emin misiniz?`)) {
+        return;
+      }
+      state.users = state.users.filter(u => u.id !== id);
+      addAuditLog(state.currentLocationId, 'ADMIN_KULLANICI_SIL', 'Yönetici', `Kullanıcı silindi: ${target.fullName} (@${target.username})`);
+      saveState();
+      renderAdminUsersTable();
+    }
+
+
+    function openAddLocationModal() {
+      document.getElementById('addLocName').value = '';
+      document.getElementById('addLocCode').value = '';
+      document.getElementById('modalAddLocation').classList.remove('hidden');
+    }
+
+    function saveNewLocation() {
+      const name = document.getElementById('addLocName').value.trim();
+      if (!name) {
+        alert("Lütfen mahal adını giriniz.");
+        return;
+      }
+      let code = document.getElementById('addLocCode').value.trim();
+      if (!code) {
+        const nextNum = state.locations.length + 1;
+        code = `PRJ-A-WC0${nextNum}`;
+      }
+      const building = document.getElementById('addLocBuilding').value.trim() || 'Ana Bina';
+      const supName = document.getElementById('addLocSupervisor').value;
+      const backupSupName = document.getElementById('addLocBackupSupervisor').value;
+      const tol = parseInt(document.getElementById('addLocTolerance').value) || 15;
+      const preset = document.getElementById('addLocPreset').value;
+
+      let schedule = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+      if (preset === '1hour') schedule = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+      else if (preset === '3shift') schedule = ['09:00', '14:00', '19:00'];
+
+      const locId = 'WC-0' + (state.locations.length + 1);
+      const token = 'token-wc-' + Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 6);
+
+      const newLoc = {
+        id: locId,
+        code: code,
+        name: name,
+        building: building,
+        token: token,
+        toleranceMinutes: tol,
+        schedule: schedule,
+        currentSupervisor: { id: 'SUP-01', name: supName },
+        backupSupervisor: { id: 'SUP-02', name: backupSupName },
+        status: 'ACTIVE'
+      };
+
+      state.locations.push(newLoc);
+      addAuditLog(locId, 'MAHAL_EKLEME', 'Yönetici', `Yeni WC mahali oluşturuldu: ${name} (${code})`);
+      saveState();
+
+      closeModal('modalAddLocation');
+      populateLocationSelectors();
+      refreshAllViews();
+
+      openPrintStickerModal(locId);
+    }
+
+    function openPrintStickerModal(locId) {
+      const loc = state.locations.find(l => l.id === locId) || state.locations[0];
+      if (!loc) return;
+
+      document.getElementById('stickerLocName').textContent = loc.name;
+      document.getElementById('stickerLocCode').textContent = `${loc.code} • ${loc.building || 'Ana Bina'}`;
+
+      const targetUrl = window.location.origin + '/q/' + loc.token;
+      document.getElementById('stickerUrlText').textContent = targetUrl;
+
+      const container = document.getElementById('stickerQrSvgContainer');
+      container.innerHTML = '';
+
+      try {
+        if (typeof qrcode !== 'undefined') {
+          const qr = qrcode(0, 'M');
+          qr.addData(targetUrl);
+          qr.make();
+          container.innerHTML = qr.createSvgTag({ scalable: true, margin: 2 });
+          const svg = container.querySelector('svg');
+          if (svg) {
+            svg.setAttribute('class', 'w-full h-full');
+          }
+        } else {
+          container.innerHTML = `<div class="p-4 text-xs font-mono text-slate-500 border border-dashed rounded">${targetUrl}</div>`;
+        }
+      } catch (err) {
+        container.innerHTML = `<div class="p-2 text-xs text-rose-600">QR üretilemedi: ${err.message}</div>`;
+      }
+
+      document.getElementById('modalPrintSticker').classList.remove('hidden');
+    }
+
+    function regenerateLocationToken(locId) {
+      const loc = state.locations.find(l => l.id === locId);
+      if (!loc) return;
+
+      if (confirm(`"${loc.name}" için mevcut QR tokenı iptal edilsin ve yeni bir güvenli token oluşturulsun mu?\n\nDikkat: Sahada asılı olan eski QR etiketleri çalışmayacaktır!`)) {
+        const oldToken = loc.token;
+        loc.token = 'token-wc-' + Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 6);
+        addAuditLog(loc.id, 'QR_TOKEN_YENILEME', 'Yönetici', `Eski token (${oldToken}) iptal edildi, yeni güvenli token üretildi.`);
+        saveState();
+        refreshAllViews();
+        alert(`"${loc.name}" için yeni QR token üretildi!\n\nLütfen yeni QR etiketini yazdırıp sahaya asınız.`);
+        openPrintStickerModal(loc.id);
+      }
+    }
+
+    function deleteLocation(locId) {
+      const loc = state.locations.find(l => l.id === locId);
+      if (!loc) return;
+
+      if (confirm(`"${loc.name}" (${loc.code}) WC mahali silinsin mi?`)) {
+        state.locations = state.locations.filter(l => l.id !== locId);
+        if (state.currentLocationId === locId && state.locations.length > 0) {
+          state.currentLocationId = state.locations[0].id;
+        }
+        addAuditLog(null, 'MAHAL_SILME', 'Yönetici', `WC mahali silindi: ${loc.name} (${loc.code})`);
+        saveState();
+        populateLocationSelectors();
+        refreshAllViews();
+      }
+    }
+
+
+    function renderParetoChart() {
+      const container = document.getElementById('paretoChartContainer');
+      container.innerHTML = '';
+      const counts = {};
+      state.feedbacks.forEach(f => {
+        if (f.issues && f.issues.length > 0) {
+          f.issues.forEach(issue => {
+            counts[issue] = (counts[issue] || 0) + 1;
+          });
+        }
+      });
+
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      if (sorted.length === 0) {
+        container.innerHTML = `<p class="text-xs text-slate-400 italic">Henüz olumsuz anket kaydı oluşmadı.</p>`;
+        return;
+      }
+
+      const maxCount = Math.max(...sorted.map(s => s[1]));
+      sorted.forEach(([issue, count]) => {
+        const pct = Math.round((count / maxCount) * 100);
+        const row = document.createElement('div');
+        row.className = "space-y-1";
+        row.innerHTML = `
+          <div class="flex justify-between text-xs font-semibold text-slate-700">
+            <span>${issue}</span>
+            <span>${count} Şikayet</span>
+          </div>
+          <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div class="bg-rose-500 h-2 rounded-full" style="width: ${pct}%"></div>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function renderLocationStatusTable() {
+      const tbody = document.getElementById('locationStatusTableBody');
+      tbody.innerHTML = '';
+      state.locations.forEach(loc => {
+        const locLogs = state.cleaningLogs.filter(l => l.locationId === loc.id);
+        const lastClean = locLogs.length > 0 ? locLogs[locLogs.length - 1] : null;
+
+        const locAudits = state.supervisorAudits.filter(a => a.locationId === loc.id);
+        const lastAudit = locAudits.length > 0 ? locAudits[locAudits.length - 1] : null;
+
+        const activeIncident = state.incidents.find(i => i.locationId === loc.id && i.status !== 'VERIFIED_CLOSED');
+        let incidentBadge = '<span class="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">Normal</span>';
+        if (activeIncident) {
+          incidentBadge = activeIncident.isEscalated 
+            ? '<span class="px-2 py-0.5 rounded font-bold bg-rose-200 text-rose-900 animate-pulse">Eskalasyonda!</span>'
+            : '<span class="px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 animate-pulse">Müdahale Bekliyor</span>';
+        }
+
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-2 px-3 font-semibold text-slate-800">${loc.name} <br><span class="text-[10px] text-slate-400 font-mono">${loc.code}</span></td>
+          <td class="py-2 px-3 text-slate-600">${loc.currentSupervisor.name} <br><span class="text-[10px] text-slate-400">Yedek: ${loc.backupSupervisor.name}</span></td>
+          <td class="py-2 px-3 font-mono text-purple-700 font-bold">${loc.schedule.length} Slot (±${loc.toleranceMinutes} dk)</td>
+          <td class="py-2 px-3 text-slate-600">${lastClean ? `${lastClean.time} (${lastClean.staffName})` : '-'}</td>
+          <td class="py-2 px-3 text-slate-600">${lastAudit ? `${lastAudit.time} (${lastAudit.isApproved ? '✓ Onay' : '✗ Uygunsuzluk'})` : '-'}</td>
+          <td class="py-2 px-3">${incidentBadge}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderAuditLogsTable() {
+      const tbody = document.getElementById('auditLogsTableBody');
+      tbody.innerHTML = '';
+      state.auditTrail.slice().reverse().slice(0, 15).forEach(log => {
+        const loc = state.locations.find(l => l.id === log.locationId);
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="py-2 px-3 font-mono text-slate-600">${log.timestamp}</td>
+          <td class="py-2 px-3 font-medium text-slate-700">${loc ? loc.name : (log.locationId || 'Genel')}</td>
+          <td class="py-2 px-3 font-bold text-[11px] text-slate-800">${log.action}</td>
+          <td class="py-2 px-3 text-slate-600">${log.userRole}</td>
+          <td class="py-2 px-3 text-slate-600 text-[11px]">${log.summary}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function addAuditLog(locationId, action, userRole, summary) {
+      state.auditTrail.push({
+        timestamp: getCurrentTime(),
+        locationId: locationId,
+        action: action,
+        userRole: userRole,
+        summary: summary
+      });
+    }
+
+    function exportReportToCSV() {
+      let csv = "Zaman,Mahal,Eylem,Kullanici,Ozet\n";
+      state.auditTrail.forEach(a => {
+        const loc = state.locations.find(x => x.id === a.locationId);
+        csv += `"${a.timestamp}","${loc ? loc.name : (a.locationId || 'Genel')}","${a.action}","${a.userRole}","${a.summary.replace(/"/g, '""')}"\n`;
+      });
+      const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `WC_Denetim_Izleme_Raporu_${new Date().toISOString().substring(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function playAlarmSound() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.2);
+        osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.4);
+        osc.frequency.exponentialRampToValueAtTime(450, ctx.currentTime + 0.6);
+
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.8);
+      } catch (e) {
+        console.log("Audio API izni verilmedi.");
+      }
+    }
+
+    function testAlarm() {
+      playAlarmSound();
+      alert("🚨 Acil Durum Siren Sesi Çalındı!");
+    }
+
+    function getCurrentTime() {
+      const d = new Date();
+      return d.toTimeString().substring(0, 5);
+    }
+
+    window.onload = initApp;
+  </script>
+</body>
+</html>
