@@ -68,6 +68,31 @@ export default function App() {
       return '';
     }
   });
+
+  // Ana Ekran Sekmesi: 'guest' | 'employee' | 'supervisor' | 'admin'
+  const [activeTab, setActiveTab] = useState<'guest' | 'employee' | 'supervisor' | 'admin'>(() => {
+    try {
+      const saved = localStorage.getItem('wc_user');
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.username === 'admin' || u.role === 'admin') return 'admin';
+        if (u.role === 'supervisor') return 'supervisor';
+        if (u.role === 'employee') return 'employee';
+      }
+      return 'guest';
+    } catch {
+      return 'guest';
+    }
+  });
+
+  // Admin Alt Sekmeleri: 'overview' | 'locations' | 'users' | 'matrix' | 'audit'
+  const [adminSubTab, setAdminSubTab] = useState<'overview' | 'locations' | 'users' | 'matrix' | 'audit'>('overview');
+
+  // Şef Alt Sekmeleri: 'audit' | 'kpi' | 'matrix' | 'stickers'
+  const [supervisorSubTab, setSupervisorSubTab] = useState<'audit' | 'kpi' | 'matrix' | 'stickers'>('audit');
+
+  // Personel Alt Sekmeleri: 'tasks' | 'schedule' | 'history'
+  const [staffSubTab, setStaffSubTab] = useState<'tasks' | 'schedule' | 'history'>('tasks');
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [status, setStatus] = useState<PublicLocationStatus | null>(null);
@@ -260,7 +285,6 @@ export default function App() {
 
   // Yönetim Paneli Yükleme
   const loadDashboard = useCallback(async () => {
-    if (role !== 'supervisor' && role !== 'admin') return;
     try {
       const token = await accessToken();
       const data = await api<DashboardData>('/reports/dashboard', token);
@@ -268,15 +292,15 @@ export default function App() {
     } catch (e) {
       console.warn('Dashboard load error:', e);
     }
-  }, [accessToken, role]);
+  }, [accessToken]);
 
   useEffect(() => {
-    if (role === 'supervisor' || role === 'admin') {
+    if (activeTab === 'supervisor' || activeTab === 'admin' || role === 'supervisor' || role === 'admin') {
       void loadDashboard();
       const interval = setInterval(loadDashboard, 15000);
       return () => clearInterval(interval);
     }
-  }, [role, loadDashboard]);
+  }, [activeTab, role, loadDashboard]);
 
   // Web Audio Acil Durum Sireni
   const playSiren = useCallback(() => {
@@ -665,6 +689,7 @@ export default function App() {
           ? 'supervisor'
           : 'employee';
       setRole(userRole);
+      setActiveTab(userRole);
       setAuthModalOpen(false);
       setLoginPassword('');
       const roleLabel = userRole === 'admin' ? '👑 Sistem Yöneticisi' : userRole === 'supervisor' ? '👔 Şef' : '🧹 Personel';
@@ -702,6 +727,7 @@ export default function App() {
           ? 'supervisor'
           : 'employee';
       setRole(userRole);
+      setActiveTab(userRole);
       setAuthModalOpen(false);
       setRegFullName('');
       setRegUsername('');
@@ -726,6 +752,7 @@ export default function App() {
     localStorage.removeItem('wc_user');
     localStorage.removeItem('wc_token');
     setRole('');
+    setActiveTab('guest');
     setUsersList([]);
     if (keycloak.authenticated) {
       void keycloak.logout();
@@ -735,7 +762,6 @@ export default function App() {
 
   // 14. Admin Kullanıcı Listesi Yükleme
   const loadUsers = useCallback(async () => {
-    if (role !== 'admin' && role !== 'supervisor') return;
     try {
       const token = await accessToken();
       const list = await fetchUsersApi(token);
@@ -743,13 +769,13 @@ export default function App() {
     } catch (err) {
       console.warn('Kullanıcı listesi yüklenemedi:', err);
     }
-  }, [accessToken, role]);
+  }, [accessToken]);
 
   useEffect(() => {
-    if (role === 'admin' || role === 'supervisor') {
+    if (activeTab === 'admin' || activeTab === 'supervisor' || role === 'admin' || role === 'supervisor') {
       void loadUsers();
     }
-  }, [role, loadUsers]);
+  }, [activeTab, role, loadUsers]);
 
   // 15. Admin Sayfasından Yeni Kullanıcı Ekleme
   const handleAdminCreateUser = async (e: FormEvent) => {
@@ -933,6 +959,71 @@ export default function App() {
         </div>
       </header>
 
+      {/* ANA EKRAN SEKMELERİ (ROL SEKMELERİ) */}
+      <nav className="bg-slate-800/95 backdrop-blur border-b border-slate-700/80 sticky top-[53px] z-40 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between gap-2 overflow-x-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('guest')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'guest'
+                  ? 'bg-teal-600 text-white shadow-md ring-2 ring-teal-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+            >
+              <i className="fa-solid fa-restroom"></i> 🚻 Ziyaretçi / Misafir
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('employee')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'employee'
+                  ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+            >
+              <i className="fa-solid fa-broom"></i> 🧹 Personel Ekranı
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('supervisor')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'supervisor'
+                  ? 'bg-purple-600 text-white shadow-md ring-2 ring-purple-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+            >
+              <i className="fa-solid fa-user-tie"></i> 👔 Şef Modülü
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('admin')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                activeTab === 'admin'
+                  ? 'bg-amber-600 text-white shadow-md ring-2 ring-amber-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+            >
+              <i className="fa-solid fa-crown"></i> 👑 Yönetim (Admin)
+            </button>
+          </div>
+
+          <div className="text-[11px] font-semibold text-slate-400 hidden sm:flex items-center gap-2">
+            <span>Aktif Sekme:</span>
+            <span className="font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
+              {activeTab === 'admin'
+                ? '👑 Admin Portalı'
+                : activeTab === 'supervisor'
+                ? '👔 Şef Denetim'
+                : activeTab === 'employee'
+                ? '🧹 Personel'
+                : '🚻 Misafir Ekranı'}
+            </span>
+          </div>
+        </div>
+      </nav>
+
       {/* KAMERA SCANNER ALANI */}
       {scannerOpen && (
         <div className="max-w-md mx-auto my-3 p-4 bg-slate-900 rounded-2xl shadow-2xl text-center text-white">
@@ -964,7 +1055,7 @@ export default function App() {
       {/* ANA İÇERİK ALANI */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col items-center justify-start gap-6">
         {/* ROL GÖRÜNÜMÜ: MİSAFİR EKRANI */}
-        {(!keycloak.authenticated || role === '') && (
+        {activeTab === 'guest' && (
           <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
             <div className="bg-gradient-to-r from-teal-600 to-emerald-700 text-white p-5 text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full mb-2">
@@ -1078,8 +1169,10 @@ export default function App() {
           </div>
         )}
 
-        {/* ROL GÖRÜNÜMÜ: PERSONEL EKRANI */}
-        {role === 'employee' && (
+        {/* ======================================================== */}
+        {/* 2. ROL GÖRÜNÜMÜ: PERSONEL EKRANI                         */}
+        {/* ======================================================== */}
+        {activeTab === 'employee' && (
           <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5">
               <div className="flex items-center justify-between">
@@ -1088,512 +1181,636 @@ export default function App() {
                     Saha Operasyon
                   </span>
                   <h2 className="text-lg font-bold mt-1">{curLocation?.name}</h2>
+                  <p className="text-xs text-blue-100 font-mono">{curLocation?.code}</p>
                 </div>
                 <i className="fa-solid fa-broom text-2xl opacity-80"></i>
               </div>
             </div>
 
+            {/* Personel Alt Sekmeleri (Sub-tabs) */}
+            <div className="flex border-b border-slate-200 bg-slate-50 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('tasks')}
+                className={`flex-1 py-2.5 text-center transition border-b-2 ${
+                  staffSubTab === 'tasks'
+                    ? 'border-blue-600 text-blue-700 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <i className="fa-solid fa-circle-check"></i> Temizlik Formu
+              </button>
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('schedule')}
+                className={`flex-1 py-2.5 text-center transition border-b-2 ${
+                  staffSubTab === 'schedule'
+                    ? 'border-blue-600 text-blue-700 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <i className="fa-solid fa-calendar-days"></i> Saatler
+              </button>
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('history')}
+                className={`flex-1 py-2.5 text-center transition border-b-2 ${
+                  staffSubTab === 'history'
+                    ? 'border-blue-600 text-blue-700 bg-white shadow-sm'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <i className="fa-solid fa-clock-rotate-left"></i> Geçmiş
+              </button>
+            </div>
+
             <div className="p-5 space-y-4">
-              {activeIncidentForStaff && (
-                <div className="p-3 bg-amber-50 border-2 border-amber-400 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between text-amber-900 font-bold text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <i className="fa-solid fa-bell text-rose-600 animate-bounce"></i> ŞEF TARAFINDAN ACİL GÖREV ATANDI!
-                    </span>
-                    <span className="bg-amber-200 px-2 py-0.5 rounded text-[10px]">
-                      {activeIncidentForStaff.status}
-                    </span>
+              {staffSubTab === 'tasks' && (
+                <>
+                  {activeIncidentForStaff && (
+                    <div className="p-3 bg-amber-50 border-2 border-amber-400 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between text-amber-900 font-bold text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <i className="fa-solid fa-bell text-rose-600 animate-bounce"></i> ŞEF TARAFINDAN ACİL GÖREV ATANDI!
+                        </span>
+                        <span className="bg-amber-200 px-2 py-0.5 rounded text-[10px]">
+                          {activeIncidentForStaff.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-800">
+                        Sorunlar: {activeIncidentForStaff.issuesJson?.join(', ')} ({activeIncidentForStaff.time})
+                      </p>
+                      <button
+                        onClick={() => handleStaffResolve(activeIncidentForStaff.id)}
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-xs shadow flex items-center justify-center gap-1.5"
+                      >
+                        <i className="fa-solid fa-check"></i> Müdahaleyi Tamamla ve Şefe Bildir
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700">Görevli Personel:</span>
+                      <span className="font-semibold text-slate-900">
+                        {currentUser?.fullName || keycloak.tokenParsed?.preferred_username || 'Personel'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
+                      <span className="font-medium text-slate-600">Sistem İşlem Saati:</span>
+                      <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        {currentTime.substring(0, 5)}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs text-amber-800">
-                    Sorunlar: {activeIncidentForStaff.issuesJson?.join(', ')} ({activeIncidentForStaff.time})
-                  </p>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 block">Yapılan İşlemleri Onaylayınız:</label>
+                    <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+                      <input type="checkbox" checked={task1} onChange={(e) => setTask1(e.target.checked)} className="rounded text-blue-600" />
+                      <span>Klozet, pisuvar ve lavabolar dezenfekte edildi</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+                      <input type="checkbox" checked={task2} onChange={(e) => setTask2(e.target.checked)} className="rounded text-blue-600" />
+                      <span>Sıvı sabun, kağıt havlu ve tuvalet kağıdı ikmali yapıldı</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+                      <input type="checkbox" checked={task3} onChange={(e) => setTask3(e.target.checked)} className="rounded text-blue-600" />
+                      <span>Çöp kovaları boşaltıldı ve yeni poşet takıldı</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
+                      <input type="checkbox" checked={task4} onChange={(e) => setTask4(e.target.checked)} className="rounded text-blue-600" />
+                      <span>Zemin mop ile silindi ve kurulandı</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <input
+                      type="text"
+                      value={staffNote}
+                      onChange={(e) => setStaffNote(e.target.value)}
+                      placeholder="Varsa arıza/sarf ikmal notu..."
+                      className="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500"
+                    />
+                  </div>
+
                   <button
-                    onClick={() => handleStaffResolve(activeIncidentForStaff.id)}
-                    className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-xs shadow flex items-center justify-center gap-1.5"
+                    disabled={busy}
+                    onClick={handleCleaningSubmit}
+                    className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-sm"
                   >
-                    <i className="fa-solid fa-check"></i> Müdahaleyi Tamamla ve Şefe Bildir
+                    <i className="fa-solid fa-circle-check text-lg"></i>
+                    Temizliği Tamamla ve Dijital Beyan Oluştur
                   </button>
+                </>
+              )}
+
+              {staffSubTab === 'schedule' && (
+                <div className="space-y-3">
+                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-xs text-blue-900">
+                    <strong>Planlanan Temizlik Slotları:</strong> Bu mahal için tanımlı plan ±{curLocation?.toleranceMinutes || 15} dakika toleransla denetlenmektedir.
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {curLocation?.schedule?.map((time, idx) => (
+                      <div key={idx} className="bg-slate-50 border border-slate-200 p-2.5 rounded-lg text-center font-mono font-bold text-slate-800 text-xs">
+                        {time}
+                      </div>
+                    )) || <p className="text-xs text-slate-400">Plan bulunamadı.</p>}
+                  </div>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setStaffPastOpen(true)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
-                >
-                  <i className="fa-solid fa-clock-rotate-left text-blue-600"></i> Önceki Temizlikler
-                </button>
-                <button
-                  onClick={() => setStaffScheduleOpen(true)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition"
-                >
-                  <i className="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
-                </button>
-              </div>
-
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">Görevli Personel:</span>
-                  <span className="font-semibold text-slate-900">
-                    {keycloak.tokenParsed?.preferred_username || keycloak.tokenParsed?.name || 'Personel'}
-                  </span>
+              {staffSubTab === 'history' && (
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setStaffPastOpen(true)}
+                    className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <i className="fa-solid fa-clock-rotate-left text-blue-400"></i> Tam Temizlik Geçmişini Aç
+                  </button>
+                  <div className="text-xs text-slate-500">
+                    {supervisorStatus?.lastCleaning ? (
+                      <div className="p-3 bg-slate-50 border rounded-xl space-y-1">
+                        <span className="font-bold text-slate-700 block">En Son Temizlik Beyanı:</span>
+                        <div>Personel: <strong>{supervisorStatus.lastCleaning.staffName}</strong></div>
+                        <div>Saat: <strong>{supervisorStatus.lastCleaning.actualTime}</strong></div>
+                        <div>SLA Durumu: <span className="font-bold text-blue-700">{supervisorStatus.lastCleaning.slaStatus}</span></div>
+                      </div>
+                    ) : (
+                      <p className="italic text-slate-400">Henüz kayıtlı temizlik geçmişi bulunmuyor.</p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
-                  <span className="font-medium text-slate-600">Sistem İşlem Saati:</span>
-                  <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    {currentTime.substring(0, 5)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 block">Yapılan İşlemleri Onaylayınız:</label>
-                <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-                  <input type="checkbox" checked={task1} onChange={(e) => setTask1(e.target.checked)} className="rounded text-blue-600" />
-                  <span>Klozet, pisuvar ve lavabolar dezenfekte edildi</span>
-                </label>
-                <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-                  <input type="checkbox" checked={task2} onChange={(e) => setTask2(e.target.checked)} className="rounded text-blue-600" />
-                  <span>Sıvı sabun, kağıt havlu ve tuvalet kağıdı ikmali yapıldı</span>
-                </label>
-                <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-                  <input type="checkbox" checked={task3} onChange={(e) => setTask3(e.target.checked)} className="rounded text-blue-600" />
-                  <span>Çöp kovaları boşaltıldı ve yeni poşet takıldı</span>
-                </label>
-                <label className="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-                  <input type="checkbox" checked={task4} onChange={(e) => setTask4(e.target.checked)} className="rounded text-blue-600" />
-                  <span>Zemin mop ile silindi ve kurulandı</span>
-                </label>
-              </div>
-
-              <div>
-                <input
-                  type="text"
-                  value={staffNote}
-                  onChange={(e) => setStaffNote(e.target.value)}
-                  placeholder="Varsa arıza/sarf ikmal notu..."
-                  className="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <button
-                disabled={busy}
-                onClick={handleCleaningSubmit}
-                className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-sm"
-              >
-                <i className="fa-solid fa-circle-check text-lg"></i>
-                Temizliği Tamamla ve Dijital Beyan Oluştur
-              </button>
+              )}
             </div>
           </div>
         )}
 
-        {/* ROL GÖRÜNÜMÜ: ŞEF MODÜLÜ */}
-        {role === 'supervisor' && (
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
-            <div className="bg-gradient-to-r from-purple-700 to-indigo-800 text-white p-5">
-              <div className="flex items-center justify-between">
+        {/* ======================================================== */}
+        {/* 3. ROL GÖRÜNÜMÜ: ŞEF MODÜLÜ (DENETİM & OPERASYON)        */}
+        {/* ======================================================== */}
+        {activeTab === 'supervisor' && (
+          <div className="w-full max-w-5xl space-y-4">
+            {/* Şef Karşılama Başlığı */}
+            <div className="bg-gradient-to-r from-purple-800 via-indigo-900 to-purple-800 text-white p-5 rounded-2xl shadow-xl border border-purple-800/60 flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-purple-600/30 flex items-center justify-center text-2xl border border-purple-500/40">
+                  <i className="fa-solid fa-user-tie text-purple-300"></i>
+                </div>
                 <div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider bg-purple-500/40 px-2 py-0.5 rounded">
-                    Vardiya & Kalite Denetimi
-                  </span>
-                  <h2 className="text-lg font-bold mt-1">{curLocation?.name}</h2>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] block opacity-80">Nöbetçi Şef</span>
-                  <span className="text-xs font-bold">
-                    {curLocation?.currentSupervisorName || keycloak.tokenParsed?.preferred_username || 'Şef'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {/* Olay Yönetim Hub'ı */}
-              <div className="space-y-2">
-                {supervisorStatus?.activeIncidents && supervisorStatus.activeIncidents.length > 0 ? (
-                  supervisorStatus.activeIncidents.map((inc) => (
-                    <div
-                      key={inc.id}
-                      className={`p-3 rounded-xl space-y-2 text-xs border-2 ${
-                        inc.status === 'OPEN'
-                          ? 'bg-rose-50 border-rose-400'
-                          : inc.status === 'DISPATCHED'
-                            ? 'bg-amber-50 border-amber-300'
-                            : 'bg-emerald-50 border-emerald-400'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between font-bold">
-                        <span>
-                          {inc.status === 'OPEN' && '🚨 YENİ ŞİKAYET'}
-                          {inc.status === 'DISPATCHED' && '🏃 MÜDAHALE SÜRÜYOR'}
-                          {inc.status === 'RESOLVED_BY_STAFF' && '✓ MÜDAHALE TAMAMLANDI - ONAY BEKLİYOR'}
-                          {' '}({inc.id})
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] bg-white border">
-                          {inc.signalCount} Bildirim
-                        </span>
-                      </div>
-                      <p className="text-slate-700">
-                        Sorunlar: <strong>{inc.issuesJson?.join(', ')}</strong> ({inc.time})
-                      </p>
-
-                      {inc.status === 'OPEN' && (
-                        <div className="flex items-center gap-2 pt-1">
-                          <select
-                            value={assigneeMap[inc.id] || 'Ahmet Yılmaz'}
-                            onChange={(e) => setAssigneeMap({ ...assigneeMap, [inc.id]: e.target.value })}
-                            className="flex-1 bg-white border border-slate-300 rounded p-1.5 text-xs font-semibold"
-                          >
-                            <option value="Ahmet Yılmaz">Ahmet Yılmaz (Görevli)</option>
-                            <option value="Mehmet Demir">Mehmet Demir</option>
-                            <option value="Ayşe Kaya">Ayşe Kaya</option>
-                            <option value="Fatma Çelik">Fatma Çelik</option>
-                          </select>
-                          <button
-                            onClick={() => handleDispatch(inc.id)}
-                            className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-1.5 px-3 rounded shadow"
-                          >
-                            📢 Personele Ata
-                          </button>
-                        </div>
-                      )}
-
-                      {inc.status === 'DISPATCHED' && (
-                        <p className="text-[11px] text-amber-900 font-semibold">
-                          Atandı: {inc.assignedStaffName || 'Personel sahada müdahale ediyor.'}
-                        </p>
-                      )}
-
-                      {inc.status === 'RESOLVED_BY_STAFF' && (
-                        <div>
-                          <p className="text-xs text-emerald-800">
-                            <strong>{inc.assignedStaffName}</strong> müdahaleyi tamamladı. Not: <em>{inc.resolutionNote || 'Sorun giderildi'}</em>
-                          </p>
-                          <button
-                            onClick={() => handleVerifyClose(inc.id)}
-                            className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded shadow flex items-center justify-center gap-1.5"
-                          >
-                            <i className="fa-solid fa-stamp"></i> Doğrula ve Olayı Kapat (Verify & Close)
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
-                    <span className="flex items-center gap-1.5 font-bold">
-                      <i className="fa-solid fa-circle-check text-emerald-600"></i> Bu Mahalde Bekleyen Açık Şikayet Yok
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold tracking-wider bg-purple-500/40 px-2 py-0.5 rounded">
+                      Vardiya &amp; Kalite Denetim Portalı
                     </span>
-                    <span className="text-[10px] text-emerald-600">Standart Operasyon</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setStaffPastOpen(true)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition"
-                >
-                  <i className="fa-solid fa-clock-rotate-left text-purple-600"></i> Önceki Temizlikler
-                </button>
-                <button
-                  onClick={() => setStaffScheduleOpen(true)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition"
-                >
-                  <i className="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
-                </button>
-              </div>
-
-              <button
-                onClick={() => {
-                  setWorkingSchedule(curLocation?.schedule ? [...curLocation.schedule] : []);
-                  setWorkingTolerance(curLocation?.toleranceMinutes || 15);
-                  setPlannerOpen(true);
-                }}
-                className="w-full bg-purple-50 hover:bg-purple-100 text-purple-800 border-2 border-purple-300 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
-              >
-                <i className="fa-solid fa-sliders text-purple-700"></i>
-                ⚙️ Günlük Planı ve Süre Sapma Toleransını Güncelle
-              </button>
-
-              <div className="bg-purple-50/60 border border-purple-200 rounded-xl p-3 text-xs">
-                <span className="text-purple-800 font-bold block mb-1">Denetlenen Son Temizlik Beyanı:</span>
-                <div className="grid grid-cols-2 gap-2 text-slate-700">
-                  <div>
-                    Personel: <strong className="text-purple-900">{supervisorStatus?.lastCleaning?.staffName || '-'}</strong>
-                  </div>
-                  <div>
-                    İşlem Saati: <strong className="text-purple-900">{supervisorStatus?.lastCleaning?.actualTime || '-'}</strong>
-                  </div>
-                  <div className="col-span-2">
-                    SLA Durumu:{' '}
-                    <span className="font-bold text-purple-900">
-                      {supervisorStatus?.lastCleaning?.slaStatus || 'Henüz Yapılmadı'}
+                    <span className="bg-purple-900 text-purple-200 text-[10px] font-mono px-2 py-0.5 rounded border border-purple-700">
+                      Nöbetçi Şef: {curLocation?.currentSupervisorName || currentUser?.fullName || 'Şef'}
                     </span>
                   </div>
-                </div>
-              </div>
-
-              {/* Sürümlü Checklist v1.2 */}
-              <div className="border-t border-slate-200 pt-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Denetim Maddeleri (Checklist):
-                  </h3>
-                  <span className="text-[10px] text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-mono font-bold">
-                    Şablon Sürümü: v1.2
-                  </span>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  {CHECKLIST_ITEMS_V12.map((item, idx) => {
-                    const isOk = checklistAnswers[idx] ?? true;
-                    return (
-                      <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
-                        <span className="font-medium text-slate-700">
-                          {idx + 1}. {item}
-                        </span>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setChecklistAnswers({ ...checklistAnswers, [idx]: true })}
-                            className={`px-2.5 py-1 rounded font-bold ${
-                              isOk ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            ✓ Uygun
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setChecklistAnswers({ ...checklistAnswers, [idx]: false })}
-                            className={`px-2.5 py-1 rounded font-bold ${
-                              !isOk ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            ✗ Uygun Değil
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <input
-                  type="text"
-                  value={auditNote}
-                  onChange={(e) => setAuditNote(e.target.value)}
-                  placeholder="Varsa şef denetim notu..."
-                  className="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  disabled={busy}
-                  onClick={() => handleAuditSubmit(true)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
-                >
-                  <i className="fa-solid fa-check-double"></i> Denetimi Onayla
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => handleAuditSubmit(false)}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
-                >
-                  <i className="fa-solid fa-triangle-exclamation"></i> Uygunsuzluk / Düzeltme Aç
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* YÖNETİM DASHBOARD'U (Şef İçin Operasyonel Kalite ve Matris) */}
-        {role === 'supervisor' && dashboard && (
-          <div className="w-full max-w-5xl space-y-6 mt-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">👔 Tesis Operasyonel Kalite ve SLA Performans Paneli</h2>
-                <p className="text-xs text-slate-500">Şef denetim metrikleri, süreç ve lokasyon odaklı analitik izleme</p>
-              </div>
-              <a
-                href="/api/reports/export-csv"
-                target="_blank"
-                rel="noreferrer"
-                className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow-sm"
-              >
-                <i className="fa-solid fa-file-csv"></i> Denetim Raporu CSV İndir
-              </a>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
-                <span className="text-2xl font-black text-blue-600">{dashboard.kpis.totalCleans}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
-              </div>
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
-                <span className="text-2xl font-black text-emerald-600">{dashboard.kpis.onTimeRate}%</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Tam vaktinde</span>
-              </div>
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
-                <span className="text-2xl font-black text-amber-600">{dashboard.kpis.outOfTimeCount}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
-              </div>
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (&gt;Tol.)</span>
-                <span className="text-2xl font-black text-rose-600">{dashboard.kpis.notDoneCount}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
-              </div>
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
-                <span className="text-2xl font-black text-purple-600">{dashboard.kpis.csatRate}%</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
-              </div>
-            </div>
-
-            {/* Pareto Kök Neden Dağılımı */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                Kötü Anket Kök Neden Dağılımı (Pareto Analizi)
-              </h3>
-              <div className="space-y-2">
-                {dashboard.paretoData.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">Henüz olumsuz anket kaydı oluşmadı.</p>
-                ) : (
-                  dashboard.paretoData.map((item, idx) => {
-                    const max = dashboard.paretoData[0]?.count || 1;
-                    const pct = Math.round((item.count / max) * 100);
-                    return (
-                      <div key={idx} className="space-y-1">
-                        <div className="flex justify-between text-xs font-semibold text-slate-700">
-                          <span>{item.issue}</span>
-                          <span>{item.count} Şikayet</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div className="bg-rose-500 h-2 rounded-full" style={{ width: `${pct}%` }}></div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Canlı Mahal Operasyon Matrisi */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                Tüm Mahal Operasyon ve Vardiya Durumları
-              </h3>
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2 px-3">Mahal Kodu / Adı</th>
-                    <th className="py-2 px-3">Nöbetçi / Yedek Şef</th>
-                    <th className="py-2 px-3">Plan / Tolerans</th>
-                    <th className="py-2 px-3">Son Temizlik</th>
-                    <th className="py-2 px-3">Son Şef Denetimi</th>
-                    <th className="py-2 px-3">Olay Durumu</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {dashboard.locationMatrix.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 font-semibold text-slate-800">
-                        {row.name} <br />
-                        <span className="text-[10px] text-slate-400 font-mono">{row.code}</span>
-                      </td>
-                      <td className="py-2 px-3 text-slate-600">
-                        {row.currentSupervisor} <br />
-                        <span className="text-[10px] text-slate-400">Yedek: {row.backupSupervisor}</span>
-                      </td>
-                      <td className="py-2 px-3 font-mono text-purple-700 font-bold">
-                        {row.slotCount} Slot (±{row.toleranceMinutes} dk)
-                      </td>
-                      <td className="py-2 px-3 text-slate-600">{row.lastClean || '-'}</td>
-                      <td className="py-2 px-3 text-slate-600">{row.lastAudit || '-'}</td>
-                      <td className="py-2 px-3">
-                        {row.incidentStatus === 'NORMAL' && (
-                          <span className="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">Normal</span>
-                        )}
-                        {row.incidentStatus === 'DISPATCHED' && (
-                          <span className="px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 animate-pulse">
-                            Müdahale Bekliyor
-                          </span>
-                        )}
-                        {row.incidentStatus === 'ESCALATED' && (
-                          <span className="px-2 py-0.5 rounded font-bold bg-rose-200 text-rose-900 animate-pulse">
-                            Eskalasyonda!
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Sahadaki QR Etiketlerini İnceleme & Yazdırma (Şef Yetkisi: Yalnızca Yazdırma) */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                    <i className="fa-solid fa-print text-purple-600"></i> Sahadaki QR Etiketlerini İnceleme &amp; Yazdırma
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Fiziksel sticker yıprandığında veya yenilenmesi gerektiğinde baskı alabilirsiniz.
+                  <h2 className="text-xl font-black mt-1">👔 Şef Denetim &amp; Saha Operasyon Merkezi</h2>
+                  <p className="text-xs text-purple-200/80 mt-0.5">
+                    Aktif Mahal: <strong>{curLocation?.name}</strong> ({curLocation?.code})
                   </p>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+
+              <div className="flex items-center gap-2">
+                <a
+                  href="/api/reports/export-csv"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow"
+                >
+                  <i className="fa-solid fa-file-csv"></i> CSV Rapor İndir
+                </a>
+              </div>
+            </div>
+
+            {/* Şef Alt Sekmeleri (Sub-tabs) */}
+            <div className="flex items-center gap-1.5 bg-slate-200/90 p-1.5 rounded-2xl border border-slate-300 overflow-x-auto shadow-inner">
+              <button
+                type="button"
+                onClick={() => setSupervisorSubTab('audit')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  supervisorSubTab === 'audit'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-clipboard-check"></i> Denetim Formu &amp; Acil Olaylar
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupervisorSubTab('kpi')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  supervisorSubTab === 'kpi'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-chart-pie"></i> Performans &amp; Pareto
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupervisorSubTab('matrix')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  supervisorSubTab === 'matrix'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-table-cells"></i> Mahal Operasyon Matrisi
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupervisorSubTab('stickers')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  supervisorSubTab === 'stickers'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-print"></i> QR Etiket Baskı
+              </button>
+            </div>
+
+            {/* ŞEF SEKME 1: DENETİM FORMU & ACİL OLAYLAR */}
+            {supervisorSubTab === 'audit' && (
+              <div className="max-w-xl mx-auto w-full bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col p-5 space-y-4">
+                {/* Olay Yönetim Hub'ı */}
+                <div className="space-y-2">
+                  {supervisorStatus?.activeIncidents && supervisorStatus.activeIncidents.length > 0 ? (
+                    supervisorStatus.activeIncidents.map((inc) => (
+                      <div
+                        key={inc.id}
+                        className={`p-3 rounded-xl space-y-2 text-xs border-2 ${
+                          inc.status === 'OPEN'
+                            ? 'bg-rose-50 border-rose-400'
+                            : inc.status === 'DISPATCHED'
+                              ? 'bg-amber-50 border-amber-300'
+                              : 'bg-emerald-50 border-emerald-400'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between font-bold">
+                          <span>
+                            {inc.status === 'OPEN' && '🚨 YENİ ŞİKAYET'}
+                            {inc.status === 'DISPATCHED' && '🏃 MÜDAHALE SÜRÜYOR'}
+                            {inc.status === 'RESOLVED_BY_STAFF' && '✓ MÜDAHALE TAMAMLANDI - ONAY BEKLİYOR'}
+                            {' '}({inc.id})
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-white border">
+                            {inc.signalCount} Bildirim
+                          </span>
+                        </div>
+                        <p className="text-slate-700">
+                          Sorunlar: <strong>{inc.issuesJson?.join(', ')}</strong> ({inc.time})
+                        </p>
+
+                        {inc.status === 'OPEN' && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <select
+                              value={assigneeMap[inc.id] || 'Ahmet Yılmaz'}
+                              onChange={(e) => setAssigneeMap({ ...assigneeMap, [inc.id]: e.target.value })}
+                              className="flex-1 bg-white border border-slate-300 rounded p-1.5 text-xs font-semibold"
+                            >
+                              <option value="Ahmet Yılmaz">Ahmet Yılmaz (Görevli)</option>
+                              <option value="Mehmet Demir">Mehmet Demir</option>
+                              <option value="Ayşe Kaya">Ayşe Kaya</option>
+                              <option value="Fatma Çelik">Fatma Çelik</option>
+                            </select>
+                            <button
+                              onClick={() => handleDispatch(inc.id)}
+                              className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-1.5 px-3 rounded shadow"
+                            >
+                              📢 Personele Ata
+                            </button>
+                          </div>
+                        )}
+
+                        {inc.status === 'DISPATCHED' && (
+                          <p className="text-[11px] text-amber-900 font-semibold">
+                            Atandı: {inc.assignedStaffName || 'Personel sahada müdahale ediyor.'}
+                          </p>
+                        )}
+
+                        {inc.status === 'RESOLVED_BY_STAFF' && (
+                          <div>
+                            <p className="text-xs text-emerald-800">
+                              <strong>{inc.assignedStaffName}</strong> müdahaleyi tamamladı. Not: <em>{inc.resolutionNote || 'Sorun giderildi'}</em>
+                            </p>
+                            <button
+                              onClick={() => handleVerifyClose(inc.id)}
+                              className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded shadow flex items-center justify-center gap-1.5"
+                            >
+                              <i className="fa-solid fa-stamp"></i> Doğrula ve Olayı Kapat (Verify &amp; Close)
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+                      <span className="flex items-center gap-1.5 font-bold">
+                        <i className="fa-solid fa-circle-check text-emerald-600"></i> Bu Mahalde Bekleyen Açık Şikayet Yok
+                      </span>
+                      <span className="text-[10px] text-emerald-600">Standart Operasyon</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setStaffPastOpen(true)}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition"
+                  >
+                    <i className="fa-solid fa-clock-rotate-left text-purple-600"></i> Önceki Temizlikler
+                  </button>
+                  <button
+                    onClick={() => setStaffScheduleOpen(true)}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition"
+                  >
+                    <i className="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setWorkingSchedule(curLocation?.schedule ? [...curLocation.schedule] : []);
+                    setWorkingTolerance(curLocation?.toleranceMinutes || 15);
+                    setPlannerOpen(true);
+                  }}
+                  className="w-full bg-purple-50 hover:bg-purple-100 text-purple-800 border-2 border-purple-300 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition"
+                >
+                  <i className="fa-solid fa-sliders text-purple-700"></i>
+                  ⚙️ Günlük Planı ve Süre Sapma Toleransını Güncelle
+                </button>
+
+                <div className="bg-purple-50/60 border border-purple-200 rounded-xl p-3 text-xs">
+                  <span className="text-purple-800 font-bold block mb-1">Denetlenen Son Temizlik Beyanı:</span>
+                  <div className="grid grid-cols-2 gap-2 text-slate-700">
+                    <div>
+                      Personel: <strong className="text-purple-900">{supervisorStatus?.lastCleaning?.staffName || '-'}</strong>
+                    </div>
+                    <div>
+                      İşlem Saati: <strong className="text-purple-900">{supervisorStatus?.lastCleaning?.actualTime || '-'}</strong>
+                    </div>
+                    <div className="col-span-2">
+                      SLA Durumu:{' '}
+                      <span className="font-bold text-purple-900">
+                        {supervisorStatus?.lastCleaning?.slaStatus || 'Henüz Yapılmadı'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sürümlü Checklist v1.2 */}
+                <div className="border-t border-slate-200 pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Denetim Maddeleri (Checklist):
+                    </h3>
+                    <span className="text-[10px] text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-mono font-bold">
+                      Şablon Sürümü: v1.2
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    {CHECKLIST_ITEMS_V12.map((item, idx) => {
+                      const isOk = checklistAnswers[idx] ?? true;
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+                          <span className="font-medium text-slate-700">
+                            {idx + 1}. {item}
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setChecklistAnswers({ ...checklistAnswers, [idx]: true })}
+                              className={`px-2.5 py-1 rounded font-bold ${
+                                isOk ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              ✓ Uygun
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setChecklistAnswers({ ...checklistAnswers, [idx]: false })}
+                              className={`px-2.5 py-1 rounded font-bold ${
+                                !isOk ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              ✗ Uygun Değil
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    value={auditNote}
+                    onChange={(e) => setAuditNote(e.target.value)}
+                    placeholder="Varsa şef denetim notu..."
+                    className="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    disabled={busy}
+                    onClick={() => handleAuditSubmit(true)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <i className="fa-solid fa-check-double"></i> Denetimi Onayla
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => handleAuditSubmit(false)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <i className="fa-solid fa-triangle-exclamation"></i> Uygunsuzluk / Düzeltme Aç
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ŞEF SEKME 2: KALİTE & SLA PANELİ */}
+            {supervisorSubTab === 'kpi' && dashboard && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
+                    <span className="text-2xl font-black text-blue-600">{dashboard.kpis.totalCleans}</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
+                    <span className="text-2xl font-black text-emerald-600">{dashboard.kpis.onTimeRate}%</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Tam vaktinde</span>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
+                    <span className="text-2xl font-black text-amber-600">{dashboard.kpis.outOfTimeCount}</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (&gt;Tol.)</span>
+                    <span className="text-2xl font-black text-rose-600">{dashboard.kpis.notDoneCount}</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
+                    <span className="text-2xl font-black text-purple-600">{dashboard.kpis.csatRate}%</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
+                  </div>
+                </div>
+
+                {/* Pareto Kök Neden Dağılımı */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    Kötü Anket Kök Neden Dağılımı (Pareto Analizi)
+                  </h3>
+                  <div className="space-y-2">
+                    {dashboard.paretoData.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">Henüz olumsuz anket kaydı oluşmadı.</p>
+                    ) : (
+                      dashboard.paretoData.map((item, idx) => {
+                        const max = dashboard.paretoData[0]?.count || 1;
+                        const pct = Math.round((item.count / max) * 100);
+                        return (
+                          <div key={idx} className="space-y-1">
+                            <div className="flex justify-between text-xs font-semibold text-slate-700">
+                              <span>{item.issue}</span>
+                              <span>{item.count} Şikayet</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                              <div className="bg-rose-500 h-2 rounded-full" style={{ width: `${pct}%` }}></div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ŞEF SEKME 3: MAHAL OPERASYON MATRİSİ */}
+            {supervisorSubTab === 'matrix' && dashboard && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                  Tüm Mahal Operasyon ve Vardiya Durumları
+                </h3>
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                     <tr>
-                      <th className="py-2 px-3">Mahal Adı &amp; Kodu</th>
-                      <th className="py-2 px-3">Bina</th>
-                      <th className="py-2 px-3">Sorumlu Şef</th>
-                      <th className="py-2 px-3 text-right">QR Baskı</th>
+                      <th className="py-2 px-3">Mahal Kodu / Adı</th>
+                      <th className="py-2 px-3">Nöbetçi / Yedek Şef</th>
+                      <th className="py-2 px-3">Plan / Tolerans</th>
+                      <th className="py-2 px-3">Son Temizlik</th>
+                      <th className="py-2 px-3">Son Şef Denetimi</th>
+                      <th className="py-2 px-3">Olay Durumu</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {locations.map((loc) => (
-                      <tr key={loc.id} className="hover:bg-slate-50">
-                        <td className="py-2 px-3 font-semibold text-slate-800">{loc.name} ({loc.code})</td>
-                        <td className="py-2 px-3 text-slate-600">{loc.building}</td>
-                        <td className="py-2 px-3 text-slate-600">{loc.currentSupervisorName || '-'}</td>
-                        <td className="py-2 px-3 text-right">
-                          <button
-                            onClick={() => {
-                              setStickerLoc(loc);
-                              setPrintStickerModalOpen(true);
-                            }}
-                            className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2.5 py-1 rounded text-xs inline-flex items-center gap-1 shadow-sm transition"
-                          >
-                            <i className="fa-solid fa-print text-emerald-400"></i> Etiket Yazdır
-                          </button>
+                    {dashboard.locationMatrix.map((row) => (
+                      <tr key={row.id} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 font-semibold text-slate-800">
+                          {row.name} <br />
+                          <span className="text-[10px] text-slate-400 font-mono">{row.code}</span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-600">
+                          {row.currentSupervisor} <br />
+                          <span className="text-[10px] text-slate-400">Yedek: {row.backupSupervisor}</span>
+                        </td>
+                        <td className="py-2 px-3 font-mono text-purple-700 font-bold">
+                          {row.slotCount} Slot (±{row.toleranceMinutes} dk)
+                        </td>
+                        <td className="py-2 px-3 text-slate-600">{row.lastClean || '-'}</td>
+                        <td className="py-2 px-3 text-slate-600">{row.lastAudit || '-'}</td>
+                        <td className="py-2 px-3">
+                          {row.incidentStatus === 'NORMAL' && (
+                            <span className="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">Normal</span>
+                          )}
+                          {row.incidentStatus === 'DISPATCHED' && (
+                            <span className="px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 animate-pulse">
+                              Müdahale Bekliyor
+                            </span>
+                          )}
+                          {row.incidentStatus === 'ESCALATED' && (
+                            <span className="px-2 py-0.5 rounded font-bold bg-rose-200 text-rose-900 animate-pulse">
+                              Eskalasyonda!
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+            )}
+
+            {/* ŞEF SEKME 4: QR BASKI */}
+            {supervisorSubTab === 'stickers' && (
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <i className="fa-solid fa-print text-purple-600"></i> Sahadaki QR Etiketlerini İnceleme &amp; Yazdırma
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Fiziksel sticker yıprandığında veya yenilenmesi gerektiğinde baskı alabilirsiniz.
+                    </p>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2 px-3">Mahal Adı &amp; Kodu</th>
+                        <th className="py-2 px-3">Bina</th>
+                        <th className="py-2 px-3">Sorumlu Şef</th>
+                        <th className="py-2 px-3 text-right">QR Baskı</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {locations.map((loc) => (
+                        <tr key={loc.id} className="hover:bg-slate-50">
+                          <td className="py-2 px-3 font-semibold text-slate-800">{loc.name} ({loc.code})</td>
+                          <td className="py-2 px-3 text-slate-600">{loc.building}</td>
+                          <td className="py-2 px-3 text-slate-600">{loc.currentSupervisorName || '-'}</td>
+                          <td className="py-2 px-3 text-right">
+                            <button
+                              onClick={() => {
+                                setStickerLoc(loc);
+                                setPrintStickerModalOpen(true);
+                              }}
+                              className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2.5 py-1 rounded text-xs inline-flex items-center gap-1 shadow-sm transition"
+                            >
+                              <i className="fa-solid fa-print text-emerald-400"></i> Etiket Yazdır
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* ======================================================== */}
         {/* 4. ROL GÖRÜNÜMÜ: SİSTEM YÖNETİCİSİ (ADMİN) MERKEZİ       */}
         {/* ======================================================== */}
-        {role === 'admin' && (
-          <div className="w-full max-w-5xl space-y-6">
+        {activeTab === 'admin' && (
+          <div className="w-full max-w-5xl space-y-4">
             {/* Admin Karşılama Başlığı */}
-            <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white p-6 rounded-2xl shadow-xl border border-purple-900/50 flex items-center justify-between flex-wrap gap-4">
+            <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white p-5 rounded-2xl shadow-xl border border-purple-900/50 flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3.5">
-                <div className="w-14 h-14 rounded-2xl bg-purple-600/30 flex items-center justify-center text-3xl border border-purple-500/40">
+                <div className="w-12 h-12 rounded-xl bg-purple-600/30 flex items-center justify-center text-2xl border border-purple-500/40">
                   <i className="fa-solid fa-crown text-purple-300"></i>
                 </div>
                 <div>
@@ -1605,271 +1822,462 @@ export default function App() {
                       Yetki: Sistem Yöneticisi (Admin)
                     </span>
                   </div>
-                  <h2 className="text-2xl font-black mt-1">
+                  <h2 className="text-xl font-black mt-1">
                     Sistem Yönetici Portalı — {currentUser?.fullName || 'Admin'}
                   </h2>
                   <p className="text-xs text-purple-200/80 mt-0.5">
-                    WC mahallerini tanımlayabilir, güvenli QR etiketleri üretebilir, şef ve temizlik personellerini yönetebilirsiniz.
+                    WC mahallerini tanımlayabilir, güvenli QR etiketleri üretebilir, şef ve personelleri yönetebilirsiniz.
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setAdminModalOpen(true)}
-                  className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow transition"
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow transition"
                 >
-                  <i className="fa-solid fa-plus-circle"></i> Yeni WC Noktası Ekle
+                  <i className="fa-solid fa-plus-circle"></i> Yeni WC Noktası
                 </button>
                 <button
                   onClick={() => setAdminUserModalOpen(true)}
-                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 border border-slate-700 shadow transition"
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border border-slate-700 shadow transition"
                 >
-                  <i className="fa-solid fa-user-plus"></i> Yeni Kullanıcı Ekle
+                  <i className="fa-solid fa-user-plus"></i> Yeni Kullanıcı
                 </button>
+                <a
+                  href="/api/reports/export-csv"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow transition"
+                >
+                  <i className="fa-solid fa-file-csv"></i> CSV İndir
+                </a>
               </div>
             </div>
 
-            {/* Admin 4'lü Özet Kartları */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Tanımlı WC Noktaları</span>
-                <span className="text-2xl font-black text-purple-700">{locations.length}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Aktif Mahal</span>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Kayıtlı Kullanıcılar</span>
-                <span className="text-2xl font-black text-blue-600">{usersList.length}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {usersList.filter(u => u.role === 'supervisor' || (u.role as any) === 'admin').length} Şef / {usersList.filter(u => u.role === 'employee').length} Personel
-                </span>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Açık Olay / Arıza</span>
-                <span className="text-2xl font-black text-rose-600">
-                  {dashboard?.locationMatrix.filter(m => m.incidentStatus !== 'NORMAL').length || 0}
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Müdahale bekleyen</span>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">Güvenlik Mimarisi</span>
-                <span className="text-2xl font-black text-emerald-600">Aktif</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Opaque Token &amp; SHA-256</span>
-              </div>
+            {/* Admin Alt Sekmeleri (Sub-tabs) */}
+            <div className="flex items-center gap-1.5 bg-slate-200/90 p-1.5 rounded-2xl border border-slate-300 overflow-x-auto shadow-inner">
+              <button
+                type="button"
+                onClick={() => setAdminSubTab('overview')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  adminSubTab === 'overview'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-chart-pie"></i> Performans &amp; KPI
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab('locations')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  adminSubTab === 'locations'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-qrcode text-purple-600"></i> WC &amp; QR Yönetimi
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab('users')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  adminSubTab === 'users'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-users-gear text-purple-600"></i> Kullanıcı Yönetimi
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab('matrix')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  adminSubTab === 'matrix'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-table-cells text-purple-600"></i> Mahal Matrisi
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab('audit')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                  adminSubTab === 'audit'
+                    ? 'bg-purple-700 text-white shadow'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200'
+                }`}
+              >
+                <i className="fa-solid fa-shield-halved text-purple-600"></i> Denetim İzi (Audit)
+              </button>
             </div>
 
-            {/* Bölüm 1: WC Noktaları ve Güvenli QR Kod Yönetim Merkezi */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-7 h-7 bg-purple-100 text-purple-800 rounded-lg text-sm font-bold">
-                      <i className="fa-solid fa-qrcode"></i>
-                    </span>
-                    <h3 className="text-sm font-bold text-slate-800">
-                      WC Noktaları ve Güvenli QR Kod Yönetim Merkezi
-                    </h3>
-                    <span className="bg-purple-100 text-purple-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                      {locations.length} Mahal Kayıtlı
+            {/* ADMİN SEKME 1: PERFORMANS & KPI */}
+            {adminSubTab === 'overview' && (
+              <div className="space-y-4">
+                {/* Admin 4'lü Özet Kartları */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Tanımlı WC Noktaları</span>
+                    <span className="text-2xl font-black text-purple-700">{locations.length}</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Aktif Mahal</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Kayıtlı Kullanıcılar</span>
+                    <span className="text-2xl font-black text-blue-600">{usersList.length}</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      {usersList.filter(u => u.role === 'supervisor' || (u.role as any) === 'admin').length} Şef / {usersList.filter(u => u.role === 'employee').length} Personel
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Sistem genelindeki tüm WC mahallerini yönetebilir, yeni mahal ekleyebilir, yüksek çözünürlüklü QR etiketleri yazdırabilir veya sahada hasar gören/sızdırılan QR kodlarını tek tıkla iptal edip yeni güvenli token üretebilirsiniz.
-                  </p>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Açık Olay / Arıza</span>
+                    <span className="text-2xl font-black text-rose-600">
+                      {dashboard?.locationMatrix.filter(m => m.incidentStatus !== 'NORMAL').length || 0}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Müdahale bekleyen</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Güvenlik Mimarisi</span>
+                    <span className="text-2xl font-black text-emerald-600">Aktif</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Opaque Token &amp; SHA-256</span>
+                  </div>
                 </div>
-                <button
-                  onClick={() => setAdminModalOpen(true)}
-                  className="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow transition"
-                >
-                  <i className="fa-solid fa-plus-circle"></i> Yeni WC Noktası Ekle
-                </button>
-              </div>
 
-              {/* Bilgilendirme Kutusu: Opaque Token Güvenliği */}
-              <div className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl flex items-start gap-2.5 text-xs text-slate-700">
-                <i className="fa-solid fa-shield-halved text-purple-700 mt-0.5 text-sm"></i>
-                <div>
-                  <strong className="text-purple-950">Opaque Token Mimarisi:</strong> QR kodlar doğrudan veritabanı ID'si veya sıralı numara barındırmaz; her mahal kriptografik bir token taşır (<code className="bg-purple-100 text-purple-900 px-1 py-0.5 rounded text-[11px]">/q/:token</code>). QR etiketinin değiştirilmesi gerektiğinde "Yenile" butonuna basıldığında eski etiket anında geçersiz kılınır ve yeni QR oluşturulur.
+                {dashboard && (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
+                        <span className="text-2xl font-black text-blue-600">{dashboard.kpis.totalCleans}</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
+                      </div>
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
+                        <span className="text-2xl font-black text-emerald-600">{dashboard.kpis.onTimeRate}%</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Tam vaktinde</span>
+                      </div>
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
+                        <span className="text-2xl font-black text-amber-600">{dashboard.kpis.outOfTimeCount}</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
+                      </div>
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (&gt;Tol.)</span>
+                        <span className="text-2xl font-black text-rose-600">{dashboard.kpis.notDoneCount}</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
+                      </div>
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
+                        <span className="text-2xl font-black text-purple-600">{dashboard.kpis.csatRate}%</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
+                      </div>
+                    </div>
+
+                    {/* Pareto Analizi */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                        Kötü Anket Kök Neden Dağılımı (Pareto Analizi)
+                      </h3>
+                      <div className="space-y-2">
+                        {dashboard.paretoData.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic">Henüz olumsuz anket kaydı oluşmadı.</p>
+                        ) : (
+                          dashboard.paretoData.map((item, idx) => {
+                            const max = dashboard.paretoData[0]?.count || 1;
+                            const pct = Math.round((item.count / max) * 100);
+                            return (
+                              <div key={idx} className="space-y-1">
+                                <div className="flex justify-between text-xs font-semibold text-slate-700">
+                                  <span>{item.issue}</span>
+                                  <span>{item.count} Şikayet</span>
+                                </div>
+                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                  <div className="bg-rose-500 h-2 rounded-full" style={{ width: `${pct}%` }}></div>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ADMİN SEKME 2: WC & QR YÖNETİMİ */}
+            {adminSubTab === 'locations' && (
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-7 h-7 bg-purple-100 text-purple-800 rounded-lg text-sm font-bold">
+                        <i className="fa-solid fa-qrcode"></i>
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        WC Noktaları ve Güvenli QR Kod Yönetim Merkezi
+                      </h3>
+                      <span className="bg-purple-100 text-purple-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                        {locations.length} Mahal Kayıtlı
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Sistem genelindeki tüm WC mahallerini yönetebilir, yeni mahal ekleyebilir, QR etiketleri yazdırabilir veya token yenileyebilirsiniz.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setAdminModalOpen(true)}
+                    className="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow transition"
+                  >
+                    <i className="fa-solid fa-plus-circle"></i> Yeni WC Noktası Ekle
+                  </button>
+                </div>
+
+                {/* Bilgilendirme Kutusu: Opaque Token Güvenliği */}
+                <div className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl flex items-start gap-2.5 text-xs text-slate-700">
+                  <i className="fa-solid fa-shield-halved text-purple-700 mt-0.5 text-sm"></i>
+                  <div>
+                    <strong className="text-purple-950">Opaque Token Mimarisi:</strong> QR kodlar doğrudan veritabanı ID'si barındırmaz; her mahal kriptografik bir token taşır (<code className="bg-purple-100 text-purple-900 px-1 py-0.5 rounded text-[11px]">/q/:token</code>). Hasar gören etiketlerde "Yenile" butonuna basılarak eski etiket anında geçersiz kılınır.
+                  </div>
+                </div>
+
+                {/* Lokasyonlar Tablosu */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Mahal Adı &amp; Kodu</th>
+                        <th className="py-2.5 px-3">Bina / Bölüm</th>
+                        <th className="py-2.5 px-3">Sorumlu Şefler</th>
+                        <th className="py-2.5 px-3">Plan / Tolerans</th>
+                        <th className="py-2.5 px-3">Güvenli Token</th>
+                        <th className="py-2.5 px-3 text-right">Eylemler</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {locations.map((loc) => (
+                        <tr key={loc.id} className="hover:bg-slate-50 transition">
+                          <td className="py-2.5 px-3">
+                            <span className="font-bold text-slate-900 block">{loc.name}</span>
+                            <span className="font-mono text-[10px] text-slate-400">{loc.code}</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">
+                            <span className="inline-block bg-slate-100 px-2 py-0.5 rounded text-[11px] font-medium">
+                              {loc.building || 'Genel'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">
+                            <div className="font-medium text-slate-800">{loc.currentSupervisorName || '-'}</div>
+                            <div className="text-[10px] text-slate-400">Yedek: {loc.backupSupervisorName || '-'}</div>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-mono text-purple-700 font-bold">
+                              {loc.schedule?.length || 0} Slot
+                            </span>
+                            <span className="text-[10px] text-slate-500 block">±{loc.toleranceMinutes} dk tolerans</span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono text-[10px] border border-slate-200">
+                              {loc.token ? `/q/${loc.token.slice(0, 14)}...` : '-'}
+                            </code>
+                          </td>
+                          <td className="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
+                            <button
+                              onClick={() => {
+                                setStickerLoc(loc);
+                                setPrintStickerModalOpen(true);
+                              }}
+                              className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 shadow-sm transition"
+                              title="Yazdırılabilir QR Etiketi Aç"
+                            >
+                              <i className="fa-solid fa-print text-emerald-400"></i> Etiket
+                            </button>
+                            <button
+                              onClick={() => handleRegenerateToken(loc)}
+                              disabled={busy}
+                              className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 transition"
+                              title="Yeni QR token üret (Eski QR geçersiz olur)"
+                            >
+                              <i className="fa-solid fa-rotate text-amber-700"></i> Yenile
+                            </button>
+                            <button
+                              onClick={() => handleDeleteLocation(loc)}
+                              disabled={busy || locations.length <= 1}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 transition disabled:opacity-40"
+                              title="Mahali Sil"
+                            >
+                              <i className="fa-solid fa-trash"></i> Sil
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
+            )}
 
-              {/* Lokasyonlar Tablosu */}
-              <div className="overflow-x-auto">
+            {/* ADMİN SEKME 3: KULLANICI YÖNETİMİ */}
+            {adminSubTab === 'users' && (
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-7 h-7 bg-purple-100 text-purple-800 rounded-lg text-sm font-bold">
+                        <i className="fa-solid fa-users-gear"></i>
+                      </span>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Sistem Kullanıcıları ve Personel Yönetim Merkezi
+                      </h3>
+                      <span className="bg-purple-100 text-purple-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                        {usersList.length} Kayıtlı Kullanıcı
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Sisteme kayıtlı personelleri ve yöneticileri listeleyebilir, rolleri inceleyebilir, yeni kullanıcı ekleyebilir veya silebilirsiniz.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setAdminUserModalOpen(true)}
+                    className="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow transition"
+                  >
+                    <i className="fa-solid fa-user-plus"></i> Yeni Kullanıcı Ekle
+                  </button>
+                </div>
+
+                {/* Kullanıcılar Tablosu */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Adı Soyadı</th>
+                        <th className="py-2.5 px-3">Kullanıcı Adı</th>
+                        <th className="py-2.5 px-3">Yetki / Rol</th>
+                        <th className="py-2.5 px-3">Kayıt Tarihi</th>
+                        <th className="py-2.5 px-3 text-right">Eylemler</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {usersList.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-4 text-center text-slate-400 italic">
+                            Kayıtlı kullanıcı bulunamadı veya yükleniyor...
+                          </td>
+                        </tr>
+                      ) : (
+                        usersList.map((u) => (
+                          <tr key={u.id} className="hover:bg-slate-50 transition">
+                            <td className="py-2.5 px-3">
+                              <span className="font-bold text-slate-900 flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-[10px] flex items-center justify-center font-bold">
+                                  {u.fullName.charAt(0).toUpperCase()}
+                                </span>
+                                {u.fullName}
+                                {currentUser?.id === u.id && (
+                                  <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded font-bold">
+                                    Siz
+                                  </span>
+                                )}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-600">
+                              @{u.username}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {u.role === 'admin' || (u.username === 'admin') ? (
+                                <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-900 font-bold px-2 py-0.5 rounded text-[11px] border border-purple-200">
+                                  <i className="fa-solid fa-crown text-[10px] text-purple-700"></i> Sistem Yöneticisi
+                                </span>
+                              ) : u.role === 'supervisor' ? (
+                                <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[11px] border border-emerald-200">
+                                  <i className="fa-solid fa-user-tie text-[10px] text-emerald-700"></i> Şef (Supervisor)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[11px] border border-blue-200">
+                                  <i className="fa-solid fa-broom text-[10px] text-blue-700"></i> Temizlik Personeli
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
+                              {u.createdAt ? formatTime(u.createdAt) : '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <button
+                                onClick={() => handleAdminDeleteUser(u)}
+                                disabled={busy || currentUser?.id === u.id || u.username === 'admin'}
+                                className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-2.5 py-1 rounded text-[11px] inline-flex items-center gap-1 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={u.username === 'admin' ? 'Ana yönetici silinemez' : currentUser?.id === u.id ? 'Aktif oturumdaki kullanıcı silinemez' : 'Kullanıcıyı Sil'}
+                              >
+                                <i className="fa-solid fa-trash"></i> Sil
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ADMİN SEKME 4: MAHAL OPERASYON MATRİSİ */}
+            {adminSubTab === 'matrix' && dashboard && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                  Tüm Mahal Operasyon ve Vardiya Durumları
+                </h3>
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                     <tr>
-                      <th className="py-2.5 px-3">Mahal Adı &amp; Kodu</th>
-                      <th className="py-2.5 px-3">Bina / Bölüm</th>
-                      <th className="py-2.5 px-3">Sorumlu Şefler</th>
-                      <th className="py-2.5 px-3">Plan / Tolerans</th>
-                      <th className="py-2.5 px-3">Güvenli Token</th>
-                      <th className="py-2.5 px-3 text-right">Eylemler</th>
+                      <th className="py-2 px-3">Mahal Kodu / Adı</th>
+                      <th className="py-2 px-3">Nöbetçi / Yedek Şef</th>
+                      <th className="py-2 px-3">Plan / Tolerans</th>
+                      <th className="py-2 px-3">Son Temizlik</th>
+                      <th className="py-2 px-3">Son Şef Denetimi</th>
+                      <th className="py-2 px-3">Olay Durumu</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {locations.map((loc) => (
-                      <tr key={loc.id} className="hover:bg-slate-50 transition">
-                        <td className="py-2.5 px-3">
-                          <span className="font-bold text-slate-900 block">{loc.name}</span>
-                          <span className="font-mono text-[10px] text-slate-400">{loc.code}</span>
+                    {dashboard.locationMatrix.map((row) => (
+                      <tr key={row.id} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 font-semibold text-slate-800">
+                          {row.name} <br />
+                          <span className="text-[10px] text-slate-400 font-mono">{row.code}</span>
                         </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          <span className="inline-block bg-slate-100 px-2 py-0.5 rounded text-[11px] font-medium">
-                            {loc.building || 'Genel'}
-                          </span>
+                        <td className="py-2 px-3 text-slate-600">
+                          {row.currentSupervisor} <br />
+                          <span className="text-[10px] text-slate-400">Yedek: {row.backupSupervisor}</span>
                         </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          <div className="font-medium text-slate-800">{loc.currentSupervisorName || '-'}</div>
-                          <div className="text-[10px] text-slate-400">Yedek: {loc.backupSupervisorName || '-'}</div>
+                        <td className="py-2 px-3 font-mono text-purple-700 font-bold">
+                          {row.slotCount} Slot (±{row.toleranceMinutes} dk)
                         </td>
-                        <td className="py-2.5 px-3">
-                          <span className="font-mono text-purple-700 font-bold">
-                            {loc.schedule?.length || 0} Slot
-                          </span>
-                          <span className="text-[10px] text-slate-500 block">±{loc.toleranceMinutes} dk tolerans</span>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <code className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono text-[10px] border border-slate-200">
-                            {loc.token ? `/q/${loc.token.slice(0, 14)}...` : '-'}
-                          </code>
-                        </td>
-                        <td className="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
-                          <button
-                            onClick={() => {
-                              setStickerLoc(loc);
-                              setPrintStickerModalOpen(true);
-                            }}
-                            className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 shadow-sm transition"
-                            title="Yazdırılabilir QR Etiketi Aç"
-                          >
-                            <i className="fa-solid fa-print text-emerald-400"></i> Etiket
-                          </button>
-                          <button
-                            onClick={() => handleRegenerateToken(loc)}
-                            disabled={busy}
-                            className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 transition"
-                            title="Güvenlik nedeniyle yeni QR token üret (Eski QR geçersiz olur)"
-                          >
-                            <i className="fa-solid fa-rotate text-amber-700"></i> Yenile
-                          </button>
-                          <button
-                            onClick={() => handleDeleteLocation(loc)}
-                            disabled={busy || locations.length <= 1}
-                            className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 transition disabled:opacity-40"
-                            title="Mahali Sil"
-                          >
-                            <i className="fa-solid fa-trash"></i> Sil
-                          </button>
+                        <td className="py-2 px-3 text-slate-600">{row.lastClean || '-'}</td>
+                        <td className="py-2 px-3 text-slate-600">{row.lastAudit || '-'}</td>
+                        <td className="py-2 px-3">
+                          {row.incidentStatus === 'NORMAL' && (
+                            <span className="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">Normal</span>
+                          )}
+                          {row.incidentStatus === 'DISPATCHED' && (
+                            <span className="px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 animate-pulse">
+                              Müdahale Bekliyor
+                            </span>
+                          )}
+                          {row.incidentStatus === 'ESCALATED' && (
+                            <span className="px-2 py-0.5 rounded font-bold bg-rose-200 text-rose-900 animate-pulse">
+                              Eskalasyonda!
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+            )}
 
-            {/* Bölüm 2: Sistem Kullanıcıları ve Personel Yönetim Merkezi */}
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-7 h-7 bg-purple-100 text-purple-800 rounded-lg text-sm font-bold">
-                      <i className="fa-solid fa-users-gear"></i>
-                    </span>
-                    <h3 className="text-sm font-bold text-slate-800">
-                      Sistem Kullanıcıları ve Personel Yönetim Merkezi
-                    </h3>
-                    <span className="bg-purple-100 text-purple-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
-                      {usersList.length} Kayıtlı Kullanıcı
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Sisteme kayıtlı yöneticileri, şefleri ve temizlik personellerini listeleyebilir, rolleri inceleyebilir, yeni kullanıcı ekleyebilir veya silebilirsiniz.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setAdminUserModalOpen(true)}
-                  className="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow transition"
-                >
-                  <i className="fa-solid fa-user-plus"></i> Yeni Kullanıcı Ekle
-                </button>
-              </div>
-
-              {/* Kullanıcılar Tablosu */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3">Adı Soyadı</th>
-                      <th className="py-2.5 px-3">Kullanıcı Adı</th>
-                      <th className="py-2.5 px-3">Yetki / Rol</th>
-                      <th className="py-2.5 px-3">Kayıt Tarihi</th>
-                      <th className="py-2.5 px-3 text-right">Eylemler</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {usersList.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-4 text-center text-slate-400 italic">
-                          Kayıtlı kullanıcı bulunamadı veya yükleniyor...
-                        </td>
-                      </tr>
-                    ) : (
-                      usersList.map((u) => (
-                        <tr key={u.id} className="hover:bg-slate-50 transition">
-                          <td className="py-2.5 px-3">
-                            <span className="font-bold text-slate-900 flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 text-[10px] flex items-center justify-center font-bold">
-                                {u.fullName.charAt(0).toUpperCase()}
-                              </span>
-                              {u.fullName}
-                              {currentUser?.id === u.id && (
-                                <span className="bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.5 rounded font-bold">
-                                  Siz
-                                </span>
-                              )}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-slate-600">
-                            @{u.username}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            {u.role === 'admin' || (u.username === 'admin') ? (
-                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-900 font-bold px-2 py-0.5 rounded text-[11px] border border-purple-200">
-                                <i className="fa-solid fa-crown text-[10px] text-purple-700"></i> Sistem Yöneticisi
-                              </span>
-                            ) : u.role === 'supervisor' ? (
-                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[11px] border border-emerald-200">
-                                <i className="fa-solid fa-user-tie text-[10px] text-emerald-700"></i> Şef (Supervisor)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[11px] border border-blue-200">
-                                <i className="fa-solid fa-broom text-[10px] text-blue-700"></i> Temizlik Personeli
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
-                            {u.createdAt ? formatTime(u.createdAt) : '-'}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <button
-                              onClick={() => handleAdminDeleteUser(u)}
-                              disabled={busy || currentUser?.id === u.id || u.username === 'admin'}
-                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-2.5 py-1 rounded text-[11px] inline-flex items-center gap-1 transition disabled:opacity-30 disabled:cursor-not-allowed"
-                              title={u.username === 'admin' ? 'Ana yönetici silinemez' : currentUser?.id === u.id ? 'Aktif oturumdaki kullanıcı silinemez' : 'Kullanıcıyı Sil'}
-                            >
-                              <i className="fa-solid fa-trash"></i> Sil
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Bölüm 3: Sistem Güvenlik ve Denetim İzi (Audit Trail) */}
-            {dashboard && (
+            {/* ADMİN SEKME 5: SİSTEM DENETİM İZİ (AUDIT TRAIL) */}
+            {adminSubTab === 'audit' && dashboard && (
               <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm overflow-x-auto space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">

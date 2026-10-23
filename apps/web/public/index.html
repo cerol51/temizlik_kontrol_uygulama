@@ -372,138 +372,207 @@
       </div>
     </div>
 
-    <!-- 4. YÖNETİM DASHBOARD -->
+    <!-- 4. YÖNETİM DASHBOARD (ADMİN PANELİ) -->
     <div id="view-admin" class="hidden w-full max-w-5xl space-y-4">
-      <div class="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 class="text-xl font-black text-slate-900">Tesis Operasyonel Kalite ve SLA Performans Paneli</h2>
-          <p class="text-xs text-slate-500">Çalışan puanlaması içermeyen, süreç ve lokasyon odaklı analitik izleme</p>
+      <!-- Admin Karşılama Başlığı -->
+      <div class="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white p-5 rounded-2xl shadow-xl border border-purple-900/50 flex items-center justify-between flex-wrap gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl bg-purple-600/30 flex items-center justify-center text-2xl border border-purple-500/40">
+            <i class="fa-solid fa-crown text-purple-300"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold uppercase tracking-wider bg-purple-500/40 px-2.5 py-0.5 rounded text-purple-200">
+                Sistem Yönetim Merkezi
+              </span>
+              <span class="bg-purple-900 text-purple-200 text-[10px] font-mono px-2 py-0.5 rounded border border-purple-700">
+                Yönetici Portalı
+              </span>
+            </div>
+            <h2 class="text-xl font-black mt-1">Yönetim ve Kalite Kontrol Merkezi</h2>
+          </div>
         </div>
-        <button onclick="exportReportToCSV()" class="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 shadow-sm">
-          <i class="fa-solid fa-file-csv"></i> Denetim Raporu CSV İndir
+        <div class="flex items-center gap-2">
+          <button onclick="openAddLocationModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow transition">
+            <i class="fa-solid fa-plus-circle"></i> Yeni WC Ekle
+          </button>
+          <button onclick="openAddUserModal()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 border border-slate-700 shadow transition">
+            <i class="fa-solid fa-user-plus"></i> Kullanıcı Ekle
+          </button>
+          <button onclick="exportReportToCSV()" class="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-file-csv"></i> CSV İndir
+          </button>
+        </div>
+      </div>
+
+      <!-- ADMİN YÖNETİM SEKMELERİ (SUB-TABS) -->
+      <div class="flex items-center gap-1.5 bg-slate-200/90 p-1.5 rounded-2xl border border-slate-300 overflow-x-auto shadow-inner">
+        <button onclick="switchAdminTab('overview')" id="admin-subtab-overview" class="admin-tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-purple-700 text-white shadow">
+          <i class="fa-solid fa-chart-pie"></i> Performans &amp; KPI
+        </button>
+        <button onclick="switchAdminTab('locations')" id="admin-subtab-locations" class="admin-tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200">
+          <i class="fa-solid fa-qrcode text-purple-600"></i> WC &amp; QR Yönetimi
+        </button>
+        <button onclick="switchAdminTab('users')" id="admin-subtab-users" class="admin-tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200">
+          <i class="fa-solid fa-users-gear text-purple-600"></i> Kullanıcı Yönetimi
+        </button>
+        <button onclick="switchAdminTab('matrix')" id="admin-subtab-matrix" class="admin-tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200">
+          <i class="fa-solid fa-table-cells text-purple-600"></i> Mahal Matrisi
+        </button>
+        <button onclick="switchAdminTab('audit')" id="admin-subtab-audit" class="admin-tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200">
+          <i class="fa-solid fa-shield-halved text-purple-600"></i> Denetim İzi
         </button>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-          <span class="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
-          <span id="kpi-total-cleans" class="text-2xl font-black text-blue-600">0</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
+      <!-- SEKME 1: PERFORMANS & KPI -->
+      <div id="admin-section-overview" class="space-y-4">
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
+            <span id="kpi-total-cleans" class="text-2xl font-black text-blue-600">0</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
+            <span id="kpi-sla-ontime" class="text-2xl font-black text-emerald-600">0%</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">Tam vaktinde</span>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
+            <span id="kpi-sla-outoftime" class="text-2xl font-black text-amber-600">0</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (>Tol.)</span>
+            <span id="kpi-sla-notdone" class="text-2xl font-black text-rose-600">0</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
+            <span id="kpi-csat" class="text-2xl font-black text-purple-600">0%</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
+          </div>
         </div>
-        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-          <span class="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
-          <span id="kpi-sla-ontime" class="text-2xl font-black text-emerald-600">0%</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Tam vaktinde</span>
-        </div>
-        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-          <span class="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
-          <span id="kpi-sla-outoftime" class="text-2xl font-black text-amber-600">0</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
-        </div>
-        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-          <span class="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (>Tol.)</span>
-          <span id="kpi-sla-notdone" class="text-2xl font-black text-rose-600">0</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
-        </div>
-        <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
-          <span class="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
-          <span id="kpi-csat" class="text-2xl font-black text-purple-600">0%</span>
-          <span class="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
+
+        <!-- Pareto Kök Neden Analizi -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+              <i class="fa-solid fa-chart-column text-rose-600"></i> Olumsuz Anket Kök Neden Dağılımı (Pareto Analizi)
+            </h3>
+            <span class="text-[11px] text-slate-400">Şikayet bazlı önceliklendirme</span>
+          </div>
+          <div id="paretoChartContainer" class="space-y-2"></div>
         </div>
       </div>
 
-      <!-- 5. WC NOKTALARI VE QR KOD YÖNETİM MERKEZİ (ADMIN PANELİ) -->
-      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-        <div class="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <i class="fa-solid fa-qrcode text-purple-600"></i> WC Noktaları ve QR Kod Yönetim Merkezi
-            </h3>
-            <p class="text-xs text-slate-500">Yeni WC mahali ekleme, kriptografik QR token üretimi, etiket yazdırma ve token yenileme</p>
+      <!-- SEKME 2: WC NOKTALARI VE QR KOD YÖNETİM MERKEZİ -->
+      <div id="admin-section-locations" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-qrcode text-purple-600"></i> WC Noktaları ve QR Kod Yönetim Merkezi
+              </h3>
+              <p class="text-xs text-slate-500">Yeni WC mahali ekleme, kriptografik QR token üretimi, etiket yazdırma ve token yenileme</p>
+            </div>
+            <button onclick="openAddLocationModal()" class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-plus"></i> Yeni WC Noktası Ekle
+            </button>
           </div>
-          <button onclick="openAddLocationModal()" class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow">
-            <i class="fa-solid fa-plus"></i> Yeni WC Noktası Ekle
-          </button>
-        </div>
 
-        <div class="overflow-x-auto">
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                <tr>
+                  <th class="py-2.5 px-3">Mahal Kodu &amp; Adı</th>
+                  <th class="py-2.5 px-3">Bina / Blok</th>
+                  <th class="py-2.5 px-3">Nöbetçi / Yedek Şef</th>
+                  <th class="py-2.5 px-3">Plan / Tol.</th>
+                  <th class="py-2.5 px-3">QR Token</th>
+                  <th class="py-2.5 px-3 text-right">Eylemler</th>
+                </tr>
+              </thead>
+              <tbody id="adminLocationsTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEKME 3: SİSTEM KULLANICILARI VE PERSONEL YÖNETİMİ -->
+      <div id="admin-section-users" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <i class="fa-solid fa-users-gear text-purple-600"></i> Sistem Kullanıcıları ve Personel Yönetim Merkezi
+              </h3>
+              <p class="text-xs text-slate-500">Sisteme kaydolan personeller ve yöneticiler, rol yetkileri ve kullanıcı hesap silme/ekleme</p>
+            </div>
+            <button onclick="openAddUserModal()" class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow">
+              <i class="fa-solid fa-user-plus"></i> Yeni Kullanıcı Ekle
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                <tr>
+                  <th class="py-2.5 px-3">Adı Soyadı</th>
+                  <th class="py-2.5 px-3">Kullanıcı Adı</th>
+                  <th class="py-2.5 px-3">Görevi / Rol</th>
+                  <th class="py-2.5 px-3">Kayıt Tarihi</th>
+                  <th class="py-2.5 px-3 text-right">Eylemler</th>
+                </tr>
+              </thead>
+              <tbody id="adminUsersTableBody" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEKME 4: MAHAL OPERASYON VE VARDİYA MATRİSİ -->
+      <div id="admin-section-matrix" class="hidden space-y-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Tüm Mahal Operasyon ve Vardiya Durumları</h3>
           <table class="w-full text-xs text-left">
             <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
               <tr>
-                <th class="py-2.5 px-3">Mahal Kodu & Adı</th>
-                <th class="py-2.5 px-3">Bina / Blok</th>
-                <th class="py-2.5 px-3">Nöbetçi / Yedek Şef</th>
-                <th class="py-2.5 px-3">Plan / Tol.</th>
-                <th class="py-2.5 px-3">QR Token</th>
-                <th class="py-2.5 px-3 text-right">Eylemler</th>
+                <th class="py-2 px-3">Mahal Kodu / Adı</th>
+                <th class="py-2 px-3">Nöbetçi / Yedek Şef</th>
+                <th class="py-2 px-3">Plan / Tolerans</th>
+                <th class="py-2 px-3">Son Temizlik</th>
+                <th class="py-2 px-3">Son Şef Denetimi</th>
+                <th class="py-2 px-3">Olay Durumu</th>
               </tr>
             </thead>
-            <tbody id="adminLocationsTableBody" class="divide-y divide-slate-100"></tbody>
+            <tbody id="locationStatusTableBody" class="divide-y divide-slate-100"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- 5.1 SİSTEM KULLANICILARI VE PERSONEL YÖNETİM MERKEZİ (ADMIN PANELİ) -->
-      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-        <div class="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <i class="fa-solid fa-users-gear text-purple-600"></i> Sistem Kullanıcıları ve Personel Yönetim Merkezi
-            </h3>
-            <p class="text-xs text-slate-500">Sisteme kaydolan personeller ve yöneticiler, rol yetkileri ve kullanıcı hesap silme/ekleme</p>
+      <!-- SEKME 5: SİSTEM DENETİM İZİ (AUDIT TRAIL) -->
+      <div id="admin-section-audit" class="hidden space-y-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Sistem Denetim İzi (Audit Trail)</h3>
+            <button onclick="exportReportToCSV()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-file-csv text-emerald-400"></i> Günlüğü CSV İndir
+            </button>
           </div>
-          <button onclick="openAddUserModal()" class="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow">
-            <i class="fa-solid fa-user-plus"></i> Yeni Kullanıcı Ekle
-          </button>
-        </div>
-
-        <div class="overflow-x-auto">
           <table class="w-full text-xs text-left">
             <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
               <tr>
-                <th class="py-2.5 px-3">Adı Soyadı</th>
-                <th class="py-2.5 px-3">Kullanıcı Adı</th>
-                <th class="py-2.5 px-3">Görevi / Rol</th>
-                <th class="py-2.5 px-3">Kayıt Tarihi</th>
-                <th class="py-2.5 px-3 text-right">Eylemler</th>
+                <th class="py-2 px-3">Zaman Damgası (UTC+3)</th>
+                <th class="py-2 px-3">Mahal</th>
+                <th class="py-2 px-3">Olay / İşlem</th>
+                <th class="py-2 px-3">Kullanıcı Rolü</th>
+                <th class="py-2 px-3">İşlem Özeti / SLA Detayı</th>
               </tr>
             </thead>
-            <tbody id="adminUsersTableBody" class="divide-y divide-slate-100"></tbody>
+            <tbody id="auditLogsTableBody" class="divide-y divide-slate-100"></tbody>
           </table>
         </div>
-      </div>
-
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Tüm Mahal Operasyon ve Vardiya Durumları</h3>
-        <table class="w-full text-xs text-left">
-          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-            <tr>
-              <th class="py-2 px-3">Mahal Kodu / Adı</th>
-              <th class="py-2 px-3">Nöbetçi / Yedek Şef</th>
-              <th class="py-2 px-3">Plan / Tolerans</th>
-              <th class="py-2 px-3">Son Temizlik</th>
-              <th class="py-2 px-3">Son Şef Denetimi</th>
-              <th class="py-2 px-3">Olay Durumu</th>
-            </tr>
-          </thead>
-          <tbody id="locationStatusTableBody" class="divide-y divide-slate-100"></tbody>
-        </table>
-      </div>
-
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-        <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Sistem Denetim İzi (Audit Trail)</h3>
-        <table class="w-full text-xs text-left">
-          <thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-            <tr>
-              <th class="py-2 px-3">Zaman Damgası (UTC+3)</th>
-              <th class="py-2 px-3">Mahal</th>
-              <th class="py-2 px-3">Olay / İşlem</th>
-              <th class="py-2 px-3">Kullanıcı Rolü</th>
-              <th class="py-2 px-3">İşlem Özeti / SLA Detayı</th>
-            </tr>
-          </thead>
-          <tbody id="auditLogsTableBody" class="divide-y divide-slate-100"></tbody>
-        </table>
       </div>
     </div>
   </main>
@@ -961,7 +1030,8 @@
       currentUser: null,
       supervisorChecklistState: { 1: true, 2: true, 3: true, 4: true, 5: true, 6: true },
       plannerWorkingSchedule: [],
-      plannerWorkingTolerance: 15
+      plannerWorkingTolerance: 15,
+      currentAdminTab: 'overview'
     };
 
     function initApp() {
@@ -1110,62 +1180,69 @@
       const container = document.getElementById('roleNavContainer');
       if (!container) return;
 
-      if (!state.currentUser) {
-        container.innerHTML = `
-          <span class="px-3 py-1 rounded font-semibold text-emerald-300 bg-emerald-950/70 border border-emerald-800 text-xs flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-street-view text-emerald-400"></i> Ziyaretçi / Misafir Ekranı
-          </span>
+      const roles = [
+        { id: 'guest', label: 'Ziyaretçi', icon: 'fa-restroom', activeClass: 'bg-teal-600 text-white shadow' },
+        { id: 'staff', label: 'Personel', icon: 'fa-broom', activeClass: 'bg-blue-600 text-white shadow' },
+        { id: 'supervisor', label: 'Şef Modülü', icon: 'fa-user-tie', activeClass: 'bg-purple-600 text-white shadow' },
+        { id: 'admin', label: 'Yönetim (Admin)', icon: 'fa-crown', activeClass: 'bg-amber-600 text-white shadow' },
+      ];
+
+      container.innerHTML = roles.map(r => {
+        const isActive = state.currentRole === r.id;
+        const cls = isActive
+          ? `${r.activeClass} font-bold`
+          : 'text-slate-300 hover:text-white hover:bg-slate-700/60 font-semibold';
+        return `
+          <button onclick="switchRole('${r.id}')" id="tab-${r.id}" class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 ${cls}">
+            <i class="fa-solid ${r.icon}"></i> ${r.label}
+          </button>
         `;
-      } else if (state.currentUser.role === 'admin') {
-        container.innerHTML = `
-          <span class="px-3 py-1 rounded font-bold text-amber-300 bg-amber-950/80 border border-amber-800 text-xs flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-crown text-amber-400"></i> 👑 Admin Yönetim Paneli
-          </span>
-        `;
-      } else if (state.currentUser.role === 'supervisor') {
-        container.innerHTML = `
-          <span class="px-3 py-1 rounded font-bold text-purple-300 bg-purple-950/80 border border-purple-800 text-xs flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-user-tie text-purple-400"></i> 👔 Şef Denetim & Operasyon Modülü
-          </span>
-        `;
-      } else {
-        container.innerHTML = `
-          <span class="px-3 py-1 rounded font-bold text-blue-300 bg-blue-950/80 border border-blue-800 text-xs flex items-center gap-1.5 shadow-sm">
-            <i class="fa-solid fa-broom text-blue-400"></i> 🧹 Personel Temizlik Ekranı
-          </span>
-        `;
-      }
+      }).join('');
     }
 
     function switchRole(role) {
-      // Kesin Rol İzolasyonu: Kullanıcı oturum açtığında sadece kendi rol ekranını görür
-      if (state.currentUser) {
-        if (state.currentUser.role === 'admin') {
-          role = 'admin';
-        } else if (state.currentUser.role === 'supervisor') {
-          role = 'supervisor';
-        } else {
-          role = 'staff';
-        }
-      } else {
-        role = 'guest';
+      state.currentRole = role || 'guest';
+
+      ['guest', 'staff', 'supervisor', 'admin'].forEach(r => {
+        const el = document.getElementById(`view-${r}`);
+        if (el) el.classList.toggle('hidden', r !== state.currentRole);
+      });
+
+      const rootCauseSection = document.getElementById('rootCauseSection');
+      if (rootCauseSection) rootCauseSection.classList.add('hidden');
+      const guestThankYou = document.getElementById('guestThankYou');
+      if (guestThankYou) guestThankYou.classList.add('hidden');
+
+      if (state.currentRole === 'admin') {
+        switchAdminTab(state.currentAdminTab || 'overview');
       }
-
-      state.currentRole = role;
-
-      document.getElementById('view-guest').classList.add('hidden');
-      document.getElementById('view-staff').classList.add('hidden');
-      document.getElementById('view-supervisor').classList.add('hidden');
-      document.getElementById('view-admin').classList.add('hidden');
-
-      const targetView = document.getElementById(`view-${role}`);
-      if (targetView) targetView.classList.remove('hidden');
-
-      document.getElementById('rootCauseSection').classList.add('hidden');
-      document.getElementById('guestThankYou').classList.add('hidden');
 
       updateRoleNavigation();
       refreshAllViews();
+    }
+
+    function switchAdminTab(tab) {
+      state.currentAdminTab = tab || 'overview';
+      const subTabs = ['overview', 'locations', 'users', 'matrix', 'audit'];
+
+      subTabs.forEach(t => {
+        const sec = document.getElementById(`admin-section-${t}`);
+        const btn = document.getElementById(`admin-subtab-${t}`);
+        if (sec) sec.classList.toggle('hidden', t !== state.currentAdminTab);
+        if (btn) {
+          if (t === state.currentAdminTab) {
+            btn.className = "admin-tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-purple-700 text-white shadow";
+          } else {
+            btn.className = "admin-tab-btn flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-white text-slate-700 hover:bg-slate-100 shadow-sm border border-slate-200";
+          }
+        }
+      });
+
+      if (tab === 'overview') renderParetoChart();
+      else if (tab === 'matrix') renderLocationStatusTable();
+      else if (tab === 'audit') renderAuditLogsTable();
+      else if (tab === 'locations') renderAdminLocationsTable();
+      else if (tab === 'users') renderAdminUsersTable();
     }
 
     function changeLocation(locId) {
