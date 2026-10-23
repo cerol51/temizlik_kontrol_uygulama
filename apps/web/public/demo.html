@@ -805,14 +805,18 @@
 
         <div class="pt-2 border-t border-slate-100">
           <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-2 text-center">Hızlı Demo Giriş Seçenekleri</span>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-3 gap-1.5">
+            <button type="button" onclick="quickLogin('admin', '123')" class="p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-left text-[11px] transition">
+              <strong class="block text-amber-900 font-bold">👑 Admin</strong>
+              <span class="text-amber-700 font-mono text-[9px]">admin / 123</span>
+            </button>
             <button type="button" onclick="quickLogin('kemal', '123')" class="p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg text-left text-[11px] transition">
-              <strong class="block text-purple-900 font-bold">👑 Kemal Şef</strong>
-              <span class="text-purple-600 font-mono text-[10px]">kemal / 123</span>
+              <strong class="block text-purple-900 font-bold">👔 Kemal Şef</strong>
+              <span class="text-purple-600 font-mono text-[9px]">kemal / 123</span>
             </button>
             <button type="button" onclick="quickLogin('ahmet', '123')" class="p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left text-[11px] transition">
-              <strong class="block text-blue-900 font-bold">🧹 Ahmet Temizlik</strong>
-              <span class="text-blue-600 font-mono text-[10px]">ahmet / 123</span>
+              <strong class="block text-blue-900 font-bold">🧹 Ahmet</strong>
+              <span class="text-blue-600 font-mono text-[9px]">ahmet / 123</span>
             </button>
           </div>
         </div>
@@ -887,7 +891,8 @@
           <label class="text-xs font-bold text-slate-700 block mb-1">Rol / Yetki</label>
           <select id="addAdminUserRole" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white font-medium">
             <option value="employee">🧹 Temizlik Personeli</option>
-            <option value="supervisor">👑 Şef / Denetmen / Yönetici</option>
+            <option value="supervisor">👔 Saha Şefi / Denetmen</option>
+            <option value="admin">👑 Sistem Yöneticisi (Admin)</option>
           </select>
         </div>
         <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
@@ -939,9 +944,9 @@
     ];
 
     const DEFAULT_USERS = [
-      { id: 'USR-01', fullName: 'Kemal Şef', username: 'kemal', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
-      { id: 'USR-02', fullName: 'Ayşe Şef', username: 'ayse', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
-      { id: 'USR-03', fullName: 'Sistem Yöneticisi', username: 'admin', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
+      { id: 'USR-01', fullName: 'Sistem Yöneticisi', username: 'admin', password: '123', role: 'admin', createdAt: new Date().toISOString() },
+      { id: 'USR-02', fullName: 'Kemal Şef', username: 'kemal', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
+      { id: 'USR-03', fullName: 'Ayşe Şef', username: 'ayse', password: '123', role: 'supervisor', createdAt: new Date().toISOString() },
       { id: 'USR-04', fullName: 'Ahmet Temizlik', username: 'ahmet', password: '123', role: 'employee', createdAt: new Date().toISOString() },
       { id: 'USR-05', fullName: 'Mehmet Hijyen', username: 'mehmet', password: '123', role: 'employee', createdAt: new Date().toISOString() },
     ];
@@ -976,7 +981,14 @@
           state.notifications = parsed.notifications || [];
           state.auditTrail = parsed.auditTrail || [];
           state.users = (parsed.users && parsed.users.length > 0) ? parsed.users : DEFAULT_USERS;
+          // Admin kullanıcısının rolünü her zaman 'admin' olarak sabitle
+          state.users.forEach(u => {
+            if (u.username.toLowerCase() === 'admin') u.role = 'admin';
+          });
           state.currentUser = parsed.currentUser || null;
+          if (state.currentUser && state.currentUser.username.toLowerCase() === 'admin') {
+            state.currentUser.role = 'admin';
+          }
         } catch (e) {
           loadSeedData();
         }
@@ -989,7 +1001,15 @@
       updateClock();
       setInterval(updateClock, 1000);
       setInterval(checkIncidentEscalations, 10000);
-      refreshAllViews();
+
+      // Oturuma göre kullanıcıyı sadece kendi sayfasına yönlendir
+      if (state.currentUser) {
+        if (state.currentUser.role === 'admin') switchRole('admin');
+        else if (state.currentUser.role === 'supervisor') switchRole('supervisor');
+        else switchRole('staff');
+      } else {
+        switchRole('guest');
+      }
     }
 
     function saveState() {
@@ -1074,26 +1094,65 @@
       return closest;
     }
 
+    function updateRoleNavigation() {
+      const container = document.getElementById('roleNavContainer');
+      if (!container) return;
+
+      if (!state.currentUser) {
+        container.innerHTML = `
+          <span class="px-3 py-1 rounded font-semibold text-emerald-300 bg-emerald-950/70 border border-emerald-800 text-xs flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-street-view text-emerald-400"></i> Ziyaretçi / Misafir Ekranı
+          </span>
+        `;
+      } else if (state.currentUser.role === 'admin') {
+        container.innerHTML = `
+          <span class="px-3 py-1 rounded font-bold text-amber-300 bg-amber-950/80 border border-amber-800 text-xs flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-crown text-amber-400"></i> 👑 Admin Yönetim Paneli
+          </span>
+        `;
+      } else if (state.currentUser.role === 'supervisor') {
+        container.innerHTML = `
+          <span class="px-3 py-1 rounded font-bold text-purple-300 bg-purple-950/80 border border-purple-800 text-xs flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-user-tie text-purple-400"></i> 👔 Şef Denetim & Operasyon Modülü
+          </span>
+        `;
+      } else {
+        container.innerHTML = `
+          <span class="px-3 py-1 rounded font-bold text-blue-300 bg-blue-950/80 border border-blue-800 text-xs flex items-center gap-1.5 shadow-sm">
+            <i class="fa-solid fa-broom text-blue-400"></i> 🧹 Personel Temizlik Ekranı
+          </span>
+        `;
+      }
+    }
+
     function switchRole(role) {
-      state.currentRole = role;
-      ['guest', 'staff', 'supervisor', 'admin'].forEach(r => {
-        const btn = document.getElementById(`btn-${r}`);
-        if (r === role) {
-          btn.className = "px-3 py-1 rounded font-medium transition-all text-white bg-slate-700 shadow-sm";
+      // Kesin Rol İzolasyonu: Kullanıcı oturum açtığında sadece kendi rol ekranını görür
+      if (state.currentUser) {
+        if (state.currentUser.role === 'admin') {
+          role = 'admin';
+        } else if (state.currentUser.role === 'supervisor') {
+          role = 'supervisor';
         } else {
-          btn.className = "px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white";
+          role = 'staff';
         }
-      });
+      } else {
+        role = 'guest';
+      }
+
+      state.currentRole = role;
 
       document.getElementById('view-guest').classList.add('hidden');
       document.getElementById('view-staff').classList.add('hidden');
       document.getElementById('view-supervisor').classList.add('hidden');
       document.getElementById('view-admin').classList.add('hidden');
-      document.getElementById(`view-${role}`).classList.remove('hidden');
+
+      const targetView = document.getElementById(`view-${role}`);
+      if (targetView) targetView.classList.remove('hidden');
 
       document.getElementById('rootCauseSection').classList.add('hidden');
       document.getElementById('guestThankYou').classList.add('hidden');
 
+      updateRoleNavigation();
       refreshAllViews();
     }
 
@@ -1759,17 +1818,21 @@
       const container = document.getElementById('demoUserSection');
       if (!container) return;
       if (state.currentUser) {
-        const isSup = state.currentUser.role === 'supervisor';
+        const role = state.currentUser.role;
+        const roleBadge = role === 'admin'
+          ? '<span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold">👑 Admin</span>'
+          : role === 'supervisor'
+          ? '<span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold">👔 Şef</span>'
+          : '<span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-bold">🧹 Personel</span>';
+
         container.innerHTML = `
           <span class="bg-slate-800 px-2.5 py-1 rounded text-slate-300 text-xs flex items-center gap-1.5 border border-slate-700">
-            <i class="fa-solid fa-user-circle text-emerald-400"></i>
+            <i class="fa-solid fa-user-circle ${role === 'admin' ? 'text-amber-400' : role === 'supervisor' ? 'text-purple-400' : 'text-blue-400'}"></i>
             <span class="font-bold text-white">${state.currentUser.fullName}</span>
-            <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded ${isSup ? 'bg-purple-950 text-purple-300 border border-purple-800' : 'bg-blue-950 text-blue-300 border border-blue-800'}">
-              ${isSup ? 'Şef' : 'Personel'}
-            </span>
+            ${roleBadge}
           </span>
-          <button onclick="demoLogout()" class="bg-red-800/80 hover:bg-red-700 text-white px-2 py-1 rounded text-xs transition flex items-center gap-1" title="Çıkış Yap">
-            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          <button onclick="demoLogout()" class="bg-red-800/80 hover:bg-red-700 text-white px-2.5 py-1 rounded text-xs transition flex items-center gap-1" title="Çıkış Yap">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> Çıkış
           </button>
         `;
       } else {
@@ -1782,6 +1845,18 @@
           </button>
         `;
       }
+
+      // Sadece admin kullanıcı üst menüde WC Ekle butonunu görebilir
+      const addLocBtn = document.getElementById('headerAddLocBtn');
+      if (addLocBtn) {
+        if (state.currentUser && state.currentUser.role === 'admin') {
+          addLocBtn.classList.remove('hidden');
+        } else {
+          addLocBtn.classList.add('hidden');
+        }
+      }
+
+      updateRoleNavigation();
     }
 
     function openAuthModal(tab) {
@@ -1824,7 +1899,7 @@
 
       const user = state.users.find(u => u.username.toLowerCase() === uName && u.password === pwd);
       if (!user) {
-        alert("Kullanıcı adı veya şifre hatalı!\n(İpucu: 'kemal'/'123' veya 'ahmet'/'123')");
+        alert("Kullanıcı adı veya şifre hatalı!\n(İpucu: 'admin'/'123', 'kemal'/'123' veya 'ahmet'/'123')");
         return;
       }
 
@@ -1833,7 +1908,9 @@
       updateDemoUserHeader();
       closeModal('modalAuth');
 
-      if (user.role === 'supervisor') {
+      if (user.role === 'admin') {
+        switchRole('admin');
+      } else if (user.role === 'supervisor') {
         switchRole('supervisor');
       } else {
         switchRole('staff');
@@ -1875,7 +1952,9 @@
       updateDemoUserHeader();
       closeModal('modalAuth');
 
-      if (role === 'supervisor') {
+      if (role === 'admin') {
+        switchRole('admin');
+      } else if (role === 'supervisor') {
         switchRole('supervisor');
       } else {
         switchRole('staff');
@@ -1902,7 +1981,11 @@
         const tr = document.createElement('tr');
         tr.className = "hover:bg-slate-50 transition";
         const isSelf = state.currentUser && state.currentUser.id === u.id;
-        const isSup = u.role === 'supervisor';
+        const roleBadge = u.role === 'admin'
+          ? '<span class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded text-[10px]"><i class="fa-solid fa-crown text-amber-600"></i> Admin</span>'
+          : u.role === 'supervisor'
+          ? '<span class="inline-flex items-center gap-1 bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px]"><i class="fa-solid fa-user-tie text-purple-600"></i> Şef</span>'
+          : '<span class="inline-flex items-center gap-1 bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[10px]"><i class="fa-solid fa-broom text-blue-600"></i> Personel</span>';
 
         tr.innerHTML = `
           <td class="py-2.5 px-3">
@@ -1916,10 +1999,7 @@
           </td>
           <td class="py-2.5 px-3 font-mono text-slate-600 text-xs">@${u.username}</td>
           <td class="py-2.5 px-3">
-            <span class="inline-flex items-center gap-1 ${isSup ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'} font-bold px-2 py-0.5 rounded text-[10px]">
-              <i class="fa-solid ${isSup ? 'fa-crown' : 'fa-broom'}"></i>
-              ${isSup ? 'Şef / Yönetici' : 'Temizlik Personeli'}
-            </span>
+            ${roleBadge}
           </td>
           <td class="py-2.5 px-3 text-slate-500 font-mono text-[10px]">${new Date(u.createdAt).toLocaleDateString('tr-TR')}</td>
           <td class="py-2.5 px-3 text-right">
