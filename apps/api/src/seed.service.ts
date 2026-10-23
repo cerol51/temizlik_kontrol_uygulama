@@ -51,7 +51,7 @@ export class SeedService implements OnModuleInit {
           fullName: 'Sistem Yöneticisi',
           username: 'admin',
           passwordHash: hashPassword('admin123'),
-          role: 'supervisor',
+          role: 'admin',
         },
         {
           id: '1e9ad2f0-c4c1-4d26-a081-22f873e68504',

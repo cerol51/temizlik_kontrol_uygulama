@@ -33,16 +33,13 @@
           <i class="fa-solid fa-qrcode"></i> QR Mahal:
         </span>
         <select id="locationSelector" onchange="changeLocation(this.value)" class="bg-slate-800 text-amber-400 font-semibold px-2 py-1 rounded border border-slate-700 text-xs focus:ring-1 focus:ring-amber-400 outline-none"></select>
-        <button onclick="openAddLocationModal()" title="Yeni WC Noktası Ekle &amp; QR Oluştur" class="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-2 py-1 rounded text-xs flex items-center gap-1 shadow-sm">
+        <button id="headerAddLocBtn" onclick="openAddLocationModal()" title="Yeni WC Noktası Ekle & QR Oluştur" class="hidden bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-2 py-1 rounded text-xs flex items-center gap-1 shadow-sm">
           <i class="fa-solid fa-plus-circle"></i> WC Ekle
         </button>
       </div>
 
-      <div class="flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
-        <button onclick="switchRole('guest')" id="btn-guest" class="px-3 py-1 rounded font-medium transition-all text-white bg-slate-700">Misafir</button>
-        <button onclick="switchRole('staff')" id="btn-staff" class="px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white">Personel</button>
-        <button onclick="switchRole('supervisor')" id="btn-supervisor" class="px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white">Şef Modülü</button>
-        <button onclick="switchRole('admin')" id="btn-admin" class="px-3 py-1 rounded font-medium transition-all text-slate-300 hover:text-white">Yönetim Dashboard</button>
+      <div id="roleNavContainer" class="flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700">
+        <!-- Rol Rozeti / Göstergesi updateRoleNavigation ile doldurulur -->
       </div>
 
       <div class="flex items-center gap-2">

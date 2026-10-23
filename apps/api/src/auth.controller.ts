@@ -89,7 +89,7 @@ export class AuthController {
     const fullName = body.fullName?.trim();
     const rawUsername = body.username?.trim().toLowerCase();
     const password = body.password?.trim();
-    const role = (body.role === 'supervisor' || body.role === 'admin') ? 'supervisor' : 'employee';
+    const role = (body.role === 'admin' || body.role === 'supervisor') ? body.role : 'employee';
 
     if (!fullName || !rawUsername || !password) {
       throw new BadRequestException('Ad Soyad, kullanıcı adı ve şifre zorunludur.');
@@ -173,11 +173,13 @@ export class AuthController {
       summary: `Kullanıcı sisteme giriş yaptı: ${user.fullName} (@${user.username})`,
     });
 
+    const effectiveRole = (user.username === 'admin' || user.role === 'admin') ? 'admin' : user.role;
+
     const token = signAppToken({
       id: user.id,
       fullName: user.fullName,
       username: user.username,
-      role: user.role,
+      role: effectiveRole,
     });
 
     return {
@@ -186,7 +188,7 @@ export class AuthController {
         id: user.id,
         fullName: user.fullName,
         username: user.username,
-        role: user.role,
+        role: effectiveRole,
         createdAt: user.createdAt,
       },
     };
@@ -237,7 +239,7 @@ export class AuthController {
     const fullName = body.fullName?.trim();
     const rawUsername = body.username?.trim().toLowerCase();
     const password = body.password?.trim();
-    const role = (body.role === 'supervisor' || body.role === 'admin') ? 'supervisor' : 'employee';
+    const role = (body.role === 'admin' || body.role === 'supervisor') ? body.role : 'employee';
 
     if (!fullName || !rawUsername || !password) {
       throw new BadRequestException('Ad Soyad, kullanıcı adı ve şifre zorunludur.');

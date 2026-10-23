@@ -54,7 +54,20 @@ export default function App() {
 
   const [ready, setReady] = useState(false);
   const [appError, setAppError] = useState('');
-  const [role, setRole] = useState<'employee' | 'supervisor' | ''>('');
+  const [role, setRole] = useState<'admin' | 'supervisor' | 'employee' | ''>(() => {
+    try {
+      const saved = localStorage.getItem('wc_user');
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.username === 'admin' || u.role === 'admin') return 'admin';
+        if (u.role === 'supervisor') return 'supervisor';
+        if (u.role === 'employee') return 'employee';
+      }
+      return '';
+    } catch {
+      return '';
+    }
+  });
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [status, setStatus] = useState<PublicLocationStatus | null>(null);
@@ -132,7 +145,7 @@ export default function App() {
   const [adminUserFullName, setAdminUserFullName] = useState('');
   const [adminUserUsername, setAdminUserUsername] = useState('');
   const [adminUserPassword, setAdminUserPassword] = useState('');
-  const [adminUserRole, setAdminUserRole] = useState<'employee' | 'supervisor'>('employee');
+  const [adminUserRole, setAdminUserRole] = useState<'employee' | 'supervisor' | 'admin'>('employee');
 
   // UI / Kamera / Bildirim
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -231,7 +244,7 @@ export default function App() {
       const pub = await api<PublicLocationStatus>(`/locations/${selectedId}/public`);
       setStatus(pub);
 
-      if ((currentUser || keycloak.authenticated) && (role === 'supervisor' || role === 'employee')) {
+      if ((currentUser || keycloak.authenticated) && (role === 'supervisor' || role === 'employee' || role === 'admin')) {
         const token = await accessToken();
         const sup = await api<SupervisorLocationStatus>(`/locations/${selectedId}/supervisor`, token);
         setSupervisorStatus(sup);
@@ -247,7 +260,7 @@ export default function App() {
 
   // Yönetim Paneli Yükleme
   const loadDashboard = useCallback(async () => {
-    if (role !== 'supervisor') return;
+    if (role !== 'supervisor' && role !== 'admin') return;
     try {
       const token = await accessToken();
       const data = await api<DashboardData>('/reports/dashboard', token);
@@ -258,7 +271,7 @@ export default function App() {
   }, [accessToken, role]);
 
   useEffect(() => {
-    if (role === 'supervisor') {
+    if (role === 'supervisor' || role === 'admin') {
       void loadDashboard();
       const interval = setInterval(loadDashboard, 15000);
       return () => clearInterval(interval);
@@ -643,13 +656,21 @@ export default function App() {
       setAuthToken(res.token);
       localStorage.setItem('wc_user', JSON.stringify(res.user));
       localStorage.setItem('wc_token', res.token);
-      setRole(res.user.role === 'supervisor' || (res.user.role as any) === 'admin' ? 'supervisor' : 'employee');
+      const userRole: 'admin' | 'supervisor' | 'employee' =
+        res.user.role === 'admin' || res.user.username === 'admin'
+          ? 'admin'
+          : res.user.role === 'supervisor'
+          ? 'supervisor'
+          : 'employee';
+      setRole(userRole);
       setAuthModalOpen(false);
       setLoginPassword('');
-      setNotice({ text: `Hoş geldiniz, ${res.user.fullName}! (${res.user.role === 'supervisor' ? 'Şef / Yönetici' : 'Personel'})` });
+      const roleLabel = userRole === 'admin' ? '👑 Sistem Yöneticisi' : userRole === 'supervisor' ? '👔 Şef' : '🧹 Personel';
+      setNotice({ text: `Hoş geldiniz, ${res.user.fullName}! (${roleLabel})` });
       void loadStatus();
-      if (res.user.role === 'supervisor') {
+      if (userRole === 'admin' || userRole === 'supervisor') {
         void loadDashboard();
+        void loadUsers();
       }
     } catch (err: any) {
       setNotice({ text: err.message, bad: true });
@@ -672,15 +693,22 @@ export default function App() {
       setAuthToken(res.token);
       localStorage.setItem('wc_user', JSON.stringify(res.user));
       localStorage.setItem('wc_token', res.token);
-      setRole(res.user.role === 'supervisor' || (res.user.role as any) === 'admin' ? 'supervisor' : 'employee');
+      const userRole: 'admin' | 'supervisor' | 'employee' =
+        res.user.role === 'admin' || res.user.username === 'admin'
+          ? 'admin'
+          : res.user.role === 'supervisor'
+          ? 'supervisor'
+          : 'employee';
+      setRole(userRole);
       setAuthModalOpen(false);
       setRegFullName('');
       setRegUsername('');
       setRegPassword('');
       setNotice({ text: `Hesabınız başarıyla oluşturuldu! Hoş geldiniz, ${res.user.fullName}.` });
       void loadStatus();
-      if (res.user.role === 'supervisor') {
+      if (userRole === 'admin' || userRole === 'supervisor') {
         void loadDashboard();
+        void loadUsers();
       }
     } catch (err: any) {
       setNotice({ text: err.message, bad: true });
@@ -696,6 +724,7 @@ export default function App() {
     localStorage.removeItem('wc_user');
     localStorage.removeItem('wc_token');
     setRole('');
+    setUsersList([]);
     if (keycloak.authenticated) {
       void keycloak.logout();
     }
@@ -704,7 +733,7 @@ export default function App() {
 
   // 14. Admin Kullanıcı Listesi Yükleme
   const loadUsers = useCallback(async () => {
-    if (role !== 'supervisor') return;
+    if (role !== 'admin' && role !== 'supervisor') return;
     try {
       const token = await accessToken();
       const list = await fetchUsersApi(token);
@@ -715,7 +744,7 @@ export default function App() {
   }, [accessToken, role]);
 
   useEffect(() => {
-    if (role === 'supervisor') {
+    if (role === 'admin' || role === 'supervisor') {
       void loadUsers();
     }
   }, [role, loadUsers]);
@@ -816,13 +845,15 @@ export default function App() {
             >
               <i className="fa-solid fa-print"></i> QR Etiketi
             </button>
-            <button
-              onClick={() => setAdminModalOpen(true)}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-2.5 py-1 rounded border border-emerald-500 shadow-sm flex items-center gap-1.5"
-              title="Yeni WC Noktası Ekle & QR Kod Üret"
-            >
-              <i className="fa-solid fa-plus-circle"></i> WC Ekle
-            </button>
+            {role === 'admin' && (
+              <button
+                onClick={() => setAdminModalOpen(true)}
+                className="bg-purple-700 hover:bg-purple-600 text-white font-bold px-2.5 py-1 rounded border border-purple-500 shadow-sm flex items-center gap-1.5"
+                title="Yeni WC Noktası Ekle & QR Kod Üret"
+              >
+                <i className="fa-solid fa-plus-circle"></i> WC Ekle
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -840,17 +871,33 @@ export default function App() {
             {currentUser || keycloak.authenticated ? (
               <div className="flex items-center gap-2">
                 <span className="bg-slate-800 px-2.5 py-1 rounded text-slate-300 text-xs flex items-center gap-1.5 border border-slate-700">
-                  <i className="fa-solid fa-user-circle text-emerald-400"></i>
+                  <i
+                    className={`fa-solid ${
+                      role === 'admin'
+                        ? 'fa-crown text-purple-400'
+                        : role === 'supervisor'
+                        ? 'fa-user-tie text-emerald-400'
+                        : 'fa-broom text-blue-400'
+                    }`}
+                  ></i>
                   <span className="font-bold text-white">
                     {currentUser?.fullName || keycloak.tokenParsed?.preferred_username || 'Kullanıcı'}
                   </span>
-                  <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-                    {role === 'supervisor' ? 'Şef' : 'Personel'}
+                  <span
+                    className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded font-bold border ${
+                      role === 'admin'
+                        ? 'bg-purple-950 text-purple-300 border-purple-800'
+                        : role === 'supervisor'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                        : 'bg-blue-950 text-blue-300 border-blue-800'
+                    }`}
+                  >
+                    {role === 'admin' ? '👑 Admin' : role === 'supervisor' ? '👔 Şef' : '🧹 Personel'}
                   </span>
                 </span>
                 <button
                   onClick={handleLogout}
-                  className="bg-red-800/80 hover:bg-red-700 text-white px-2.5 py-1 rounded text-xs transition flex items-center gap-1"
+                  className="bg-red-800/80 hover:bg-red-700 text-white px-2.5 py-1 rounded text-xs transition flex items-center gap-1 font-semibold"
                   title="Oturumu Kapat"
                 >
                   <i className="fa-solid fa-arrow-right-from-bracket"></i> Çıkış
@@ -1361,13 +1408,13 @@ export default function App() {
           </div>
         )}
 
-        {/* YÖNETİM DASHBOARD'U (Şef ve Tesis Yöneticileri İçin) */}
+        {/* YÖNETİM DASHBOARD'U (Şef İçin Operasyonel Kalite ve Matris) */}
         {role === 'supervisor' && dashboard && (
-          <div className="w-full max-w-5xl space-y-4 mt-4">
+          <div className="w-full max-w-5xl space-y-6 mt-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h2 className="text-xl font-black text-slate-900">Tesis Operasyonel Kalite ve SLA Performans Paneli</h2>
-                <p className="text-xs text-slate-500">Çalışan puanlaması içermeyen, süreç ve lokasyon odaklı analitik izleme</p>
+                <h2 className="text-xl font-black text-slate-900">👔 Tesis Operasyonel Kalite ve SLA Performans Paneli</h2>
+                <p className="text-xs text-slate-500">Şef denetim metrikleri, süreç ve lokasyon odaklı analitik izleme</p>
               </div>
               <a
                 href="/api/reports/export-csv"
@@ -1435,18 +1482,191 @@ export default function App() {
               </div>
             </div>
 
-            {/* WC Noktaları ve Güvenli QR Kod Yönetim Merkezi (Admin Paneli) */}
+            {/* Canlı Mahal Operasyon Matrisi */}
+            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                Tüm Mahal Operasyon ve Vardiya Durumları
+              </h3>
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="py-2 px-3">Mahal Kodu / Adı</th>
+                    <th className="py-2 px-3">Nöbetçi / Yedek Şef</th>
+                    <th className="py-2 px-3">Plan / Tolerans</th>
+                    <th className="py-2 px-3">Son Temizlik</th>
+                    <th className="py-2 px-3">Son Şef Denetimi</th>
+                    <th className="py-2 px-3">Olay Durumu</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dashboard.locationMatrix.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className="py-2 px-3 font-semibold text-slate-800">
+                        {row.name} <br />
+                        <span className="text-[10px] text-slate-400 font-mono">{row.code}</span>
+                      </td>
+                      <td className="py-2 px-3 text-slate-600">
+                        {row.currentSupervisor} <br />
+                        <span className="text-[10px] text-slate-400">Yedek: {row.backupSupervisor}</span>
+                      </td>
+                      <td className="py-2 px-3 font-mono text-purple-700 font-bold">
+                        {row.slotCount} Slot (±{row.toleranceMinutes} dk)
+                      </td>
+                      <td className="py-2 px-3 text-slate-600">{row.lastClean || '-'}</td>
+                      <td className="py-2 px-3 text-slate-600">{row.lastAudit || '-'}</td>
+                      <td className="py-2 px-3">
+                        {row.incidentStatus === 'NORMAL' && (
+                          <span className="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">Normal</span>
+                        )}
+                        {row.incidentStatus === 'DISPATCHED' && (
+                          <span className="px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 animate-pulse">
+                            Müdahale Bekliyor
+                          </span>
+                        )}
+                        {row.incidentStatus === 'ESCALATED' && (
+                          <span className="px-2 py-0.5 rounded font-bold bg-rose-200 text-rose-900 animate-pulse">
+                            Eskalasyonda!
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Sahadaki QR Etiketlerini İnceleme & Yazdırma (Şef Yetkisi: Yalnızca Yazdırma) */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <i className="fa-solid fa-print text-purple-600"></i> Sahadaki QR Etiketlerini İnceleme &amp; Yazdırma
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Fiziksel sticker yıprandığında veya yenilenmesi gerektiğinde baskı alabilirsiniz.
+                  </p>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2 px-3">Mahal Adı &amp; Kodu</th>
+                      <th className="py-2 px-3">Bina</th>
+                      <th className="py-2 px-3">Sorumlu Şef</th>
+                      <th className="py-2 px-3 text-right">QR Baskı</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {locations.map((loc) => (
+                      <tr key={loc.id} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 font-semibold text-slate-800">{loc.name} ({loc.code})</td>
+                        <td className="py-2 px-3 text-slate-600">{loc.building}</td>
+                        <td className="py-2 px-3 text-slate-600">{loc.currentSupervisorName || '-'}</td>
+                        <td className="py-2 px-3 text-right">
+                          <button
+                            onClick={() => {
+                              setStickerLoc(loc);
+                              setPrintStickerModalOpen(true);
+                            }}
+                            className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2.5 py-1 rounded text-xs inline-flex items-center gap-1 shadow-sm transition"
+                          >
+                            <i className="fa-solid fa-print text-emerald-400"></i> Etiket Yazdır
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* 4. ROL GÖRÜNÜMÜ: SİSTEM YÖNETİCİSİ (ADMİN) MERKEZİ       */}
+        {/* ======================================================== */}
+        {role === 'admin' && (
+          <div className="w-full max-w-5xl space-y-6">
+            {/* Admin Karşılama Başlığı */}
+            <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 text-white p-6 rounded-2xl shadow-xl border border-purple-900/50 flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-14 h-14 rounded-2xl bg-purple-600/30 flex items-center justify-center text-3xl border border-purple-500/40">
+                  <i className="fa-solid fa-crown text-purple-300"></i>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-purple-500/40 px-2.5 py-0.5 rounded text-purple-200">
+                      Sistem Yönetim Merkezi
+                    </span>
+                    <span className="bg-purple-900 text-purple-200 text-[10px] font-mono px-2 py-0.5 rounded border border-purple-700">
+                      Yetki: Sistem Yöneticisi (Admin)
+                    </span>
+                  </div>
+                  <h2 className="text-2xl font-black mt-1">
+                    Sistem Yönetici Portalı — {currentUser?.fullName || 'Admin'}
+                  </h2>
+                  <p className="text-xs text-purple-200/80 mt-0.5">
+                    WC mahallerini tanımlayabilir, güvenli QR etiketleri üretebilir, şef ve temizlik personellerini yönetebilirsiniz.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAdminModalOpen(true)}
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow transition"
+                >
+                  <i className="fa-solid fa-plus-circle"></i> Yeni WC Noktası Ekle
+                </button>
+                <button
+                  onClick={() => setAdminUserModalOpen(true)}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 border border-slate-700 shadow transition"
+                >
+                  <i className="fa-solid fa-user-plus"></i> Yeni Kullanıcı Ekle
+                </button>
+              </div>
+            </div>
+
+            {/* Admin 4'lü Özet Kartları */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Tanımlı WC Noktaları</span>
+                <span className="text-2xl font-black text-purple-700">{locations.length}</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Aktif Mahal</span>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Kayıtlı Kullanıcılar</span>
+                <span className="text-2xl font-black text-blue-600">{usersList.length}</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  {usersList.filter(u => u.role === 'supervisor' || (u.role as any) === 'admin').length} Şef / {usersList.filter(u => u.role === 'employee').length} Personel
+                </span>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Açık Olay / Arıza</span>
+                <span className="text-2xl font-black text-rose-600">
+                  {dashboard?.locationMatrix.filter(m => m.incidentStatus !== 'NORMAL').length || 0}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Müdahale bekleyen</span>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase block">Güvenlik Mimarisi</span>
+                <span className="text-2xl font-black text-emerald-600">Aktif</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">Opaque Token &amp; SHA-256</span>
+              </div>
+            </div>
+
+            {/* Bölüm 1: WC Noktaları ve Güvenli QR Kod Yönetim Merkezi */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-7 h-7 bg-emerald-100 text-emerald-800 rounded-lg text-sm font-bold">
+                    <span className="inline-flex items-center justify-center w-7 h-7 bg-purple-100 text-purple-800 rounded-lg text-sm font-bold">
                       <i className="fa-solid fa-qrcode"></i>
                     </span>
                     <h3 className="text-sm font-bold text-slate-800">
                       WC Noktaları ve Güvenli QR Kod Yönetim Merkezi
                     </h3>
-                    <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                    <span className="bg-purple-100 text-purple-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
                       {locations.length} Mahal Kayıtlı
                     </span>
                   </div>
@@ -1456,17 +1676,17 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => setAdminModalOpen(true)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow transition"
+                  className="bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow transition"
                 >
                   <i className="fa-solid fa-plus-circle"></i> Yeni WC Noktası Ekle
                 </button>
               </div>
 
               {/* Bilgilendirme Kutusu: Opaque Token Güvenliği */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-start gap-2.5 text-xs text-slate-600">
-                <i className="fa-solid fa-shield-halved text-emerald-600 mt-0.5 text-sm"></i>
+              <div className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl flex items-start gap-2.5 text-xs text-slate-700">
+                <i className="fa-solid fa-shield-halved text-purple-700 mt-0.5 text-sm"></i>
                 <div>
-                  <strong className="text-slate-800">Opaque Token Mimarisi:</strong> QR kodlar doğrudan veritabanı ID'si veya sıralı numara barındırmaz; her mahal kriptografik bir token taşır (<code className="bg-slate-200 px-1 py-0.5 rounded text-[11px]">/q/:token</code>). QR etiketinin değiştirilmesi gerektiğinde "Yenile" butonuna basıldığında eski etiket anında geçersiz kılınır ve yeni QR oluşturulur.
+                  <strong className="text-purple-950">Opaque Token Mimarisi:</strong> QR kodlar doğrudan veritabanı ID'si veya sıralı numara barındırmaz; her mahal kriptografik bir token taşır (<code className="bg-purple-100 text-purple-900 px-1 py-0.5 rounded text-[11px]">/q/:token</code>). QR etiketinin değiştirilmesi gerektiğinde "Yenile" butonuna basıldığında eski etiket anında geçersiz kılınır ve yeni QR oluşturulur.
                 </div>
               </div>
 
@@ -1535,7 +1755,7 @@ export default function App() {
                             className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 transition disabled:opacity-40"
                             title="Mahali Sil"
                           >
-                            <i className="fa-solid fa-trash"></i>
+                            <i className="fa-solid fa-trash"></i> Sil
                           </button>
                         </td>
                       </tr>
@@ -1545,7 +1765,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Sistem Kullanıcıları ve Personel Yönetim Merkezi (Admin Paneli) */}
+            {/* Bölüm 2: Sistem Kullanıcıları ve Personel Yönetim Merkezi */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
@@ -1561,7 +1781,7 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    Sisteme kaydolan tüm temizlik personellerini ve şefleri listeleyebilir, rolleri inceleyebilir, yeni kullanıcı tanımlayabilir veya kullanıcı silebilirsiniz.
+                    Sisteme kayıtlı yöneticileri, şefleri ve temizlik personellerini listeleyebilir, rolleri inceleyebilir, yeni kullanıcı ekleyebilir veya silebilirsiniz.
                   </p>
                 </div>
                 <button
@@ -1611,13 +1831,17 @@ export default function App() {
                             @{u.username}
                           </td>
                           <td className="py-2.5 px-3">
-                            {u.role === 'supervisor' || (u.role as any) === 'admin' ? (
-                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[11px]">
-                                <i className="fa-solid fa-crown text-[10px]"></i> Şef / Yönetici
+                            {u.role === 'admin' || (u.username === 'admin') ? (
+                              <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-900 font-bold px-2 py-0.5 rounded text-[11px] border border-purple-200">
+                                <i className="fa-solid fa-crown text-[10px] text-purple-700"></i> Sistem Yöneticisi
+                              </span>
+                            ) : u.role === 'supervisor' ? (
+                              <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[11px] border border-emerald-200">
+                                <i className="fa-solid fa-user-tie text-[10px] text-emerald-700"></i> Şef (Supervisor)
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[11px]">
-                                <i className="fa-solid fa-broom text-[10px]"></i> Temizlik Personeli
+                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[11px] border border-blue-200">
+                                <i className="fa-solid fa-broom text-[10px] text-blue-700"></i> Temizlik Personeli
                               </span>
                             )}
                           </td>
@@ -1627,9 +1851,9 @@ export default function App() {
                           <td className="py-2.5 px-3 text-right">
                             <button
                               onClick={() => handleAdminDeleteUser(u)}
-                              disabled={busy || currentUser?.id === u.id}
+                              disabled={busy || currentUser?.id === u.id || u.username === 'admin'}
                               className="bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium px-2.5 py-1 rounded text-[11px] inline-flex items-center gap-1 transition disabled:opacity-30 disabled:cursor-not-allowed"
-                              title={currentUser?.id === u.id ? 'Aktif kullanıcı silinemez' : 'Kullanıcıyı Sil'}
+                              title={u.username === 'admin' ? 'Ana yönetici silinemez' : currentUser?.id === u.id ? 'Aktif oturumdaki kullanıcı silinemez' : 'Kullanıcıyı Sil'}
                             >
                               <i className="fa-solid fa-trash"></i> Sil
                             </button>
@@ -1642,85 +1866,44 @@ export default function App() {
               </div>
             </div>
 
-            {/* Canlı Mahal Operasyon Matrisi */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                Tüm Mahal Operasyon ve Vardiya Durumları
-              </h3>
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2 px-3">Mahal Kodu / Adı</th>
-                    <th className="py-2 px-3">Nöbetçi / Yedek Şef</th>
-                    <th className="py-2 px-3">Plan / Tolerans</th>
-                    <th className="py-2 px-3">Son Temizlik</th>
-                    <th className="py-2 px-3">Son Şef Denetimi</th>
-                    <th className="py-2 px-3">Olay Durumu</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {dashboard.locationMatrix.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 font-semibold text-slate-800">
-                        {row.name} <br />
-                        <span className="text-[10px] text-slate-400 font-mono">{row.code}</span>
-                      </td>
-                      <td className="py-2 px-3 text-slate-600">
-                        {row.currentSupervisor} <br />
-                        <span className="text-[10px] text-slate-400">Yedek: {row.backupSupervisor}</span>
-                      </td>
-                      <td className="py-2 px-3 font-mono text-purple-700 font-bold">
-                        {row.slotCount} Slot (±{row.toleranceMinutes} dk)
-                      </td>
-                      <td className="py-2 px-3 text-slate-600">{row.lastClean || '-'}</td>
-                      <td className="py-2 px-3 text-slate-600">{row.lastAudit || '-'}</td>
-                      <td className="py-2 px-3">
-                        {row.incidentStatus === 'NORMAL' && (
-                          <span className="px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800">Normal</span>
-                        )}
-                        {row.incidentStatus === 'DISPATCHED' && (
-                          <span className="px-2 py-0.5 rounded font-bold bg-amber-100 text-amber-800 animate-pulse">
-                            Müdahale Bekliyor
-                          </span>
-                        )}
-                        {row.incidentStatus === 'ESCALATED' && (
-                          <span className="px-2 py-0.5 rounded font-bold bg-rose-200 text-rose-900 animate-pulse">
-                            Eskalasyonda!
-                          </span>
-                        )}
-                      </td>
+            {/* Bölüm 3: Sistem Güvenlik ve Denetim İzi (Audit Trail) */}
+            {dashboard && (
+              <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm overflow-x-auto space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <i className="fa-solid fa-clock-rotate-left text-slate-500"></i> Sistem Güvenlik ve Denetim İzi (Audit Trail)
+                  </h3>
+                  <a
+                    href="/api/reports/export-csv"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2.5 py-1 rounded text-[11px] flex items-center gap-1 shadow-sm"
+                  >
+                    <i className="fa-solid fa-file-csv text-emerald-400"></i> Tüm Logları CSV İndir
+                  </a>
+                </div>
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2 px-3">Zaman</th>
+                      <th className="py-2 px-3">Eylem</th>
+                      <th className="py-2 px-3">Kullanıcı Rolü</th>
+                      <th className="py-2 px-3">İşlem Özeti / Güvenlik Detayı</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Sistem Denetim İzi (Audit Trail) */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                Sistem Denetim İzi (Audit Trail)
-              </h3>
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                  <tr>
-                    <th className="py-2 px-3">Zaman</th>
-                    <th className="py-2 px-3">Eylem</th>
-                    <th className="py-2 px-3">Kullanıcı Rolü</th>
-                    <th className="py-2 px-3">İşlem Özeti / SLA Detayı</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {dashboard.auditLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="py-2 px-3 font-mono text-slate-600">{log.timestamp}</td>
-                      <td className="py-2 px-3 font-bold text-[11px] text-slate-800">{log.action}</td>
-                      <td className="py-2 px-3 text-slate-600">{log.userRole}</td>
-                      <td className="py-2 px-3 text-slate-600 text-[11px]">{log.summary}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {dashboard.auditLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 font-mono text-slate-600">{log.timestamp}</td>
+                        <td className="py-2 px-3 font-bold text-[11px] text-slate-800">{log.action}</td>
+                        <td className="py-2 px-3 text-slate-600">{log.userRole}</td>
+                        <td className="py-2 px-3 text-slate-600 text-[11px]">{log.summary}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -2346,7 +2529,18 @@ export default function App() {
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-2 text-center">
                     Hızlı Demo Giriş Seçenekleri
                   </span>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLoginUsername('admin');
+                        setLoginPassword('admin123');
+                      }}
+                      className="p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-left text-[11px] transition"
+                    >
+                      <strong className="block text-amber-900 font-bold">👑 Admin</strong>
+                      <span className="text-amber-700 font-mono text-[9px]">admin / admin123</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -2355,8 +2549,8 @@ export default function App() {
                       }}
                       className="p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg text-left text-[11px] transition"
                     >
-                      <strong className="block text-purple-900 font-bold">👑 Kemal Şef</strong>
-                      <span className="text-purple-600 font-mono text-[10px]">kemal / kemal123</span>
+                      <strong className="block text-purple-900 font-bold">👔 Kemal Şef</strong>
+                      <span className="text-purple-600 font-mono text-[9px]">kemal / kemal123</span>
                     </button>
                     <button
                       type="button"
@@ -2366,8 +2560,8 @@ export default function App() {
                       }}
                       className="p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left text-[11px] transition"
                     >
-                      <strong className="block text-blue-900 font-bold">🧹 Ahmet Temizlik</strong>
-                      <span className="text-blue-600 font-mono text-[10px]">ahmet / ahmet123</span>
+                      <strong className="block text-blue-900 font-bold">🧹 Ahmet</strong>
+                      <span className="text-blue-600 font-mono text-[9px]">ahmet / ahmet123</span>
                     </button>
                   </div>
                 </div>
@@ -2557,9 +2751,9 @@ export default function App() {
                 <label className="text-xs font-bold text-slate-700 block mb-1">
                   Kullanıcı Rolü & Yetkisi
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <label
-                    className={`p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs transition ${
+                    className={`p-2 border rounded-xl cursor-pointer flex flex-col items-center justify-center text-center text-xs transition ${
                       adminUserRole === 'employee'
                         ? 'border-blue-500 bg-blue-50 text-blue-900 font-bold'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -2570,12 +2764,13 @@ export default function App() {
                       name="adminUserRole"
                       checked={adminUserRole === 'employee'}
                       onChange={() => setAdminUserRole('employee')}
+                      className="mb-1"
                     />
                     <span>🧹 Personel</span>
                   </label>
 
                   <label
-                    className={`p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs transition ${
+                    className={`p-2 border rounded-xl cursor-pointer flex flex-col items-center justify-center text-center text-xs transition ${
                       adminUserRole === 'supervisor'
                         ? 'border-purple-500 bg-purple-50 text-purple-900 font-bold'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -2586,8 +2781,26 @@ export default function App() {
                       name="adminUserRole"
                       checked={adminUserRole === 'supervisor'}
                       onChange={() => setAdminUserRole('supervisor')}
+                      className="mb-1"
                     />
-                    <span>👑 Şef / Yönetici</span>
+                    <span>👔 Şef</span>
+                  </label>
+
+                  <label
+                    className={`p-2 border rounded-xl cursor-pointer flex flex-col items-center justify-center text-center text-xs transition ${
+                      adminUserRole === 'admin'
+                        ? 'border-amber-500 bg-amber-50 text-amber-900 font-bold'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="adminUserRole"
+                      checked={adminUserRole === 'admin'}
+                      onChange={() => setAdminUserRole('admin')}
+                      className="mb-1"
+                    />
+                    <span>👑 Admin</span>
                   </label>
                 </div>
               </div>
