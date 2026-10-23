@@ -2617,50 +2617,19 @@ export default function App() {
                     required
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="En az 4 karakter"
+                    placeholder="En az 8 karakter"
                     className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Görevi / Rolü
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label
-                      className={`p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs transition ${
-                        regRole === 'employee'
-                          ? 'border-blue-500 bg-blue-50 text-blue-900 font-bold'
-                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="regRole"
-                        checked={regRole === 'employee'}
-                        onChange={() => setRegRole('employee')}
-                        className="text-blue-600"
-                      />
-                      <span>🧹 Personel</span>
-                    </label>
-
-                    <label
-                      className={`p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs transition ${
-                        regRole === 'supervisor'
-                          ? 'border-purple-500 bg-purple-50 text-purple-900 font-bold'
-                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="regRole"
-                        checked={regRole === 'supervisor'}
-                        onChange={() => setRegRole('supervisor')}
-                        className="text-purple-600"
-                      />
-                      <span>👑 Şef / Denetmen</span>
-                    </label>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-700 mb-0.5">
+                    <i className="fa-solid fa-broom text-blue-600"></i>
+                    <span>Başlangıç Rolü: Temizlik Personeli</span>
                   </div>
+                  <p className="text-[11px] text-slate-500">
+                    Açık kayıtlar güvenlik kuralı gereği Personel olarak başlar. Şef veya Admin yetkileri sistem yöneticisi tarafından atanır.
+                  </p>
                 </div>
 
                 <button

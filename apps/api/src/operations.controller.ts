@@ -21,7 +21,7 @@ import {
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('supervisor')
+@Roles('supervisor', 'admin')
 export class ReportsController {
   constructor(
     @InjectRepository(Location)

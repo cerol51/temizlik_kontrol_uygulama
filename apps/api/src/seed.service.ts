@@ -30,42 +30,42 @@ export class SeedService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     try {
-      // 0. Varsayılan Kullanıcılar Seed
+      // 0. Varsayılan Kullanıcılar Seed (scrypt hash'li)
       const initialUsers = [
         {
           id: '1e9ad2f0-c4c1-4d26-a081-22f873e68501',
           fullName: 'Kemal Şef',
           username: 'kemal',
-          passwordHash: hashPassword('kemal123'),
-          role: 'supervisor',
+          passwordHash: await hashPassword('kemal123'),
+          role: 'supervisor' as const,
         },
         {
           id: '1e9ad2f0-c4c1-4d26-a081-22f873e68502',
           fullName: 'Ayşe Şef',
           username: 'ayse',
-          passwordHash: hashPassword('ayse123'),
-          role: 'supervisor',
+          passwordHash: await hashPassword('ayse1234'),
+          role: 'supervisor' as const,
         },
         {
           id: '1e9ad2f0-c4c1-4d26-a081-22f873e68503',
           fullName: 'Sistem Yöneticisi',
           username: 'admin',
-          passwordHash: hashPassword('admin123'),
-          role: 'admin',
+          passwordHash: await hashPassword('admin123'),
+          role: 'admin' as const,
         },
         {
           id: '1e9ad2f0-c4c1-4d26-a081-22f873e68504',
           fullName: 'Ahmet Temizlik',
           username: 'ahmet',
-          passwordHash: hashPassword('ahmet123'),
-          role: 'employee',
+          passwordHash: await hashPassword('ahmet123'),
+          role: 'employee' as const,
         },
         {
           id: '1e9ad2f0-c4c1-4d26-a081-22f873e68505',
           fullName: 'Mehmet Hijyen',
           username: 'mehmet',
-          passwordHash: hashPassword('mehmet123'),
-          role: 'employee',
+          passwordHash: await hashPassword('mehmet123'),
+          role: 'employee' as const,
         },
       ];
 

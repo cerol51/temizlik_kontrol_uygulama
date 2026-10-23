@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   NotFoundException,
+  OnModuleDestroy,
   Param,
   Post,
   Put,
@@ -106,7 +107,9 @@ function evaluateSLA(
 }
 
 @Controller()
-export class RestroomsController {
+export class RestroomsController implements OnModuleDestroy {
+  private readonly escalationTimer: NodeJS.Timeout;
+
   constructor(
     @InjectRepository(Location)
     private readonly locations: Repository<Location>,
@@ -123,7 +126,11 @@ export class RestroomsController {
     private readonly notifications: NotificationsService,
   ) {
     // 10 saniyede bir otomatik eskalasyon kontrolü (2 dakika kuralı)
-    setInterval(() => this.checkAutoEscalations(), 10000);
+    this.escalationTimer = setInterval(() => this.checkAutoEscalations(), 10000);
+  }
+
+  onModuleDestroy(): void {
+    clearInterval(this.escalationTimer);
   }
 
   @Get('health')
@@ -217,7 +224,7 @@ export class RestroomsController {
   // Mahal Detay & Yönetim Durumu (Şef ve Personel için)
   @Get(['locations/:id/supervisor', 'restrooms/:id/supervisor'])
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor', 'employee')
+  @Roles('supervisor', 'employee', 'admin')
   async supervisorStatus(@Param('id') id: string) {
     const location = await this.requireLocation(id);
     const [lastCleaning, lastAudit, activeIncidents, cleanings] = await Promise.all([
@@ -252,7 +259,7 @@ export class RestroomsController {
   // 1. Personel Temizlik Beyanı Oluşturma
   @Post(['locations/:id/cleanings', 'restrooms/:id/cleanings'])
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('employee', 'supervisor')
+  @Roles('employee')
   async createCleaning(
     @Param('id') locationId: string,
     @Body() body: CreateCleaningRecordDto,
@@ -496,7 +503,7 @@ export class RestroomsController {
   // 5. Personel Müdahaleyi Tamamlama
   @Post('incidents/:id/staff-resolve')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('employee', 'supervisor')
+  @Roles('employee')
   async staffResolve(
     @Param('id') incidentId: string,
     @Body() body: StaffResolveIncidentDto,
@@ -574,10 +581,10 @@ export class RestroomsController {
     return location;
   }
 
-  // 8. Yeni WC Noktası Ekleme (Admin / Şef)
+  // 8. Yeni WC Noktası Ekleme (yalnızca Admin)
   @Post(['locations', 'restrooms'])
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor')
+  @Roles('admin')
   async createLocation(
     @Body() body: CreateLocationDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -616,7 +623,7 @@ export class RestroomsController {
   // 9. WC Noktası Güncelleme
   @Put(['locations/:id/details', 'restrooms/:id/details'])
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor')
+  @Roles('admin')
   async updateLocation(
     @Param('id') id: string,
     @Body() body: UpdateLocationDto,
@@ -647,7 +654,7 @@ export class RestroomsController {
   // 10. QR Token Yenileme (Eski tokenı iptal et, yeni token ata - GAP-25)
   @Post(['locations/:id/regenerate-token', 'restrooms/:id/regenerate-token'])
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor')
+  @Roles('admin')
   async regenerateToken(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -671,7 +678,7 @@ export class RestroomsController {
   // 11. WC Noktası Silme / Arşivleme
   @Delete(['locations/:id', 'restrooms/:id'])
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor')
+  @Roles('admin')
   async deleteLocation(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,

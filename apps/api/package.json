@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",
+    "test": "node --test test/security-matrix.test.mjs",
     "start": "node dist/main.js"
   },
   "dependencies": {

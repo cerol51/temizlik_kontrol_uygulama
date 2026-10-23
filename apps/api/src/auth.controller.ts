@@ -10,36 +10,48 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { AppUser, AuditTrail } from './entities';
 import {
+  APP_ROLES,
+  AppRole,
   AuthenticatedUser,
   hashPassword,
   JwtAuthGuard,
+  MIN_PASSWORD_LENGTH,
   Public,
   Roles,
   RolesGuard,
   signAppToken,
+  verifyPassword,
 } from './auth';
 import { CurrentUser } from './user.decorator';
 
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsString()
   @MinLength(2)
+  @MaxLength(120)
   fullName: string;
 
   @IsString()
   @MinLength(2)
+  @MaxLength(60)
   username: string;
 
   @IsString()
-  @MinLength(1)
+  @MinLength(MIN_PASSWORD_LENGTH, { message: `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalıdır.` })
+  @MaxLength(128)
   password: string;
 
+  /**
+   * Geriye dönük uyumluluk için kabul edilir ancak YOK SAYILIR.
+   * Açık kayıt her zaman 'employee' rolüyle oluşturulur; rol atamasını yalnızca admin yapar.
+   */
   @IsOptional()
   @IsString()
   role?: string;
@@ -48,29 +60,44 @@ export class RegisterDto {
 export class LoginDto {
   @IsString()
   @MinLength(1)
+  @MaxLength(60)
   username: string;
 
   @IsString()
   @MinLength(1)
+  @MaxLength(128)
   password: string;
 }
 
 export class CreateUserDto {
   @IsString()
   @MinLength(2)
+  @MaxLength(120)
   fullName: string;
 
   @IsString()
   @MinLength(2)
+  @MaxLength(60)
   username: string;
 
   @IsString()
-  @MinLength(1)
+  @MinLength(MIN_PASSWORD_LENGTH, { message: `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalıdır.` })
+  @MaxLength(128)
   password: string;
 
   @IsOptional()
-  @IsString()
-  role?: string;
+  @IsIn(APP_ROLES, { message: 'Rol admin, supervisor veya employee olmalıdır.' })
+  role?: AppRole;
+}
+
+function toPublicUser(user: AppUser) {
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    username: user.username,
+    role: user.role,
+    createdAt: user.createdAt,
+  };
 }
 
 @Controller('auth')
@@ -82,116 +109,74 @@ export class AuthController {
     private readonly auditRepo: Repository<AuditTrail>,
   ) {}
 
-  // 1. Kullanıcı Kaydı (Public)
+  // 1. Kullanıcı Kaydı (Public) — rol her zaman 'employee'
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   async register(@Body() body: RegisterDto) {
-    const fullName = body.fullName?.trim();
-    const rawUsername = body.username?.trim().toLowerCase();
-    const password = body.password?.trim();
-    const role = (body.role === 'admin' || body.role === 'supervisor') ? body.role : 'employee';
+    const fullName = body.fullName.trim();
+    const username = body.username.trim().toLowerCase();
+    const password = body.password;
+    const role: AppRole = 'employee';
 
-    if (!fullName || !rawUsername || !password) {
-      throw new BadRequestException('Ad Soyad, kullanıcı adı ve şifre zorunludur.');
+    if (!fullName || !username) {
+      throw new BadRequestException('Ad Soyad ve kullanıcı adı zorunludur.');
     }
 
-    if (password.length < 4) {
-      throw new BadRequestException('Şifre en az 4 karakter olmalıdır.');
-    }
-
-    const existing = await this.usersRepo.findOne({ where: { username: rawUsername } });
+    const existing = await this.usersRepo.findOne({ where: { username } });
     if (existing) {
-      throw new BadRequestException(`"${rawUsername}" kullanıcı adı zaten kullanımda.`);
+      throw new BadRequestException(`"${username}" kullanıcı adı zaten kullanımda.`);
     }
 
-    const id = randomUUID();
-    const newUser = this.usersRepo.create({
-      id,
-      fullName,
-      username: rawUsername,
-      passwordHash: hashPassword(password),
+    const newUser = await this.usersRepo.save(
+      this.usersRepo.create({
+        id: randomUUID(),
+        fullName,
+        username,
+        passwordHash: await hashPassword(password),
+        role,
+        createdAt: new Date(),
+      }),
+    );
+
+    await this.audit(
+      'KULLANICI_KAYIT',
       role,
-      createdAt: new Date(),
-    });
+      `Yeni kullanıcı kaydoldu: ${fullName} (@${username}, Rol: ${role})`,
+    );
 
-    await this.usersRepo.save(newUser);
-
-    // Denetim İzi Kaydı
-    const nowStr = new Date().toTimeString().substring(0, 5);
-    await this.auditRepo.save({
-      id: randomUUID(),
-      timestamp: nowStr,
-      locationId: null,
-      action: 'KULLANICI_KAYIT',
-      userRole: role,
-      summary: `Yeni kullanıcı kaydoldu: ${fullName} (@${rawUsername}, Rol: ${role})`,
-    });
-
-    const token = signAppToken({
-      id: newUser.id,
-      fullName: newUser.fullName,
-      username: newUser.username,
-      role: newUser.role,
-    });
-
-    return {
-      token,
-      user: {
-        id: newUser.id,
-        fullName: newUser.fullName,
-        username: newUser.username,
-        role: newUser.role,
-        createdAt: newUser.createdAt,
-      },
-    };
+    return { token: signAppToken(newUser), user: toPublicUser(newUser) };
   }
 
-  // 2. Kullanıcı Girişi (Public)
+  // 2. Kullanıcı Girişi (Public) — kaba kuvvet denemelerine karşı sınırlı
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   async login(@Body() body: LoginDto) {
-    const rawUsername = body.username?.trim().toLowerCase();
-    const password = body.password?.trim();
+    const username = body.username.trim().toLowerCase();
+    const user = await this.usersRepo.findOne({ where: { username } });
 
-    if (!rawUsername || !password) {
-      throw new BadRequestException('Kullanıcı adı ve şifre zorunludur.');
-    }
-
-    const user = await this.usersRepo.findOne({ where: { username: rawUsername } });
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    // Kullanıcı yoksa da hash doğrulaması yapılır; yanıt süresinden kullanıcı varlığı anlaşılmasın.
+    const { valid, needsRehash } = await verifyPassword(
+      body.password,
+      user?.passwordHash ?? 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAA',
+    );
+    if (!user || !valid) {
       throw new UnauthorizedException('Kullanıcı adı veya şifre hatalı.');
     }
 
-    // Denetim İzi
-    const nowStr = new Date().toTimeString().substring(0, 5);
-    await this.auditRepo.save({
-      id: randomUUID(),
-      timestamp: nowStr,
-      locationId: null,
-      action: 'KULLANICI_GIRIS',
-      userRole: user.role,
-      summary: `Kullanıcı sisteme giriş yaptı: ${user.fullName} (@${user.username})`,
-    });
+    if (needsRehash) {
+      user.passwordHash = await hashPassword(body.password);
+      await this.usersRepo.save(user);
+    }
 
-    const effectiveRole = (user.username === 'admin' || user.role === 'admin') ? 'admin' : user.role;
+    await this.audit(
+      'KULLANICI_GIRIS',
+      user.role,
+      `Kullanıcı sisteme giriş yaptı: ${user.fullName} (@${user.username})`,
+    );
 
-    const token = signAppToken({
-      id: user.id,
-      fullName: user.fullName,
-      username: user.username,
-      role: effectiveRole,
-    });
-
-    return {
-      token,
-      user: {
-        id: user.id,
-        fullName: user.fullName,
-        username: user.username,
-        role: effectiveRole,
-        createdAt: user.createdAt,
-      },
-    };
+    return { token: signAppToken(user), user: toPublicUser(user) };
   }
 
   // 3. Mevcut Kullanıcı Bilgisi
@@ -199,96 +184,61 @@ export class AuthController {
   @Get('me')
   async me(@CurrentUser() currentUser: AuthenticatedUser) {
     const user = await this.usersRepo.findOne({ where: { id: currentUser.id } });
-    if (!user) {
-      return {
-        id: currentUser.id,
-        fullName: currentUser.name,
-        username: currentUser.name,
-        role: currentUser.roles.includes('supervisor') ? 'supervisor' : 'employee',
-      };
-    }
-    return {
-      id: user.id,
-      fullName: user.fullName,
-      username: user.username,
-      role: user.role,
-      createdAt: user.createdAt,
-    };
+    if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı.');
+    return toPublicUser(user);
   }
 
   // 4. Admin - Kayıtlı Kullanıcıları Listele
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor', 'admin')
+  @Roles('admin')
   @Get('users')
   async listUsers() {
-    const users = await this.usersRepo.find({
+    return this.usersRepo.find({
       order: { createdAt: 'DESC' },
       select: ['id', 'fullName', 'username', 'role', 'createdAt'],
     });
-    return users;
   }
 
   // 5. Admin - Yeni Kullanıcı Ekle
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor', 'admin')
+  @Roles('admin')
   @Post('users')
   async createUser(
     @Body() body: CreateUserDto,
     @CurrentUser() currentUser: AuthenticatedUser,
   ) {
-    const fullName = body.fullName?.trim();
-    const rawUsername = body.username?.trim().toLowerCase();
-    const password = body.password?.trim();
-    const role = (body.role === 'admin' || body.role === 'supervisor') ? body.role : 'employee';
+    const fullName = body.fullName.trim();
+    const username = body.username.trim().toLowerCase();
+    const role: AppRole = body.role ?? 'employee';
 
-    if (!fullName || !rawUsername || !password) {
-      throw new BadRequestException('Ad Soyad, kullanıcı adı ve şifre zorunludur.');
-    }
-
-    if (password.length < 4) {
-      throw new BadRequestException('Şifre en az 4 karakter olmalıdır.');
-    }
-
-    const existing = await this.usersRepo.findOne({ where: { username: rawUsername } });
+    const existing = await this.usersRepo.findOne({ where: { username } });
     if (existing) {
-      throw new BadRequestException(`"${rawUsername}" kullanıcı adı zaten kullanımda.`);
+      throw new BadRequestException(`"${username}" kullanıcı adı zaten kullanımda.`);
     }
 
-    const id = randomUUID();
-    const newUser = this.usersRepo.create({
-      id,
-      fullName,
-      username: rawUsername,
-      passwordHash: hashPassword(password),
-      role,
-      createdAt: new Date(),
-    });
+    const newUser = await this.usersRepo.save(
+      this.usersRepo.create({
+        id: randomUUID(),
+        fullName,
+        username,
+        passwordHash: await hashPassword(body.password),
+        role,
+        createdAt: new Date(),
+      }),
+    );
 
-    await this.usersRepo.save(newUser);
+    await this.audit(
+      'ADMIN_KULLANICI_EKLE',
+      `admin (${currentUser.name})`,
+      `Yönetici yeni kullanıcı oluşturdu: ${fullName} (@${username}, Rol: ${role})`,
+    );
 
-    // Denetim İzi
-    const nowStr = new Date().toTimeString().substring(0, 5);
-    await this.auditRepo.save({
-      id: randomUUID(),
-      timestamp: nowStr,
-      locationId: null,
-      action: 'ADMIN_KULLANICI_EKLE',
-      userRole: currentUser.roles.join(','),
-      summary: `Yönetici yeni kullanıcı oluşturdu: ${fullName} (@${rawUsername}, Rol: ${role})`,
-    });
-
-    return {
-      id: newUser.id,
-      fullName: newUser.fullName,
-      username: newUser.username,
-      role: newUser.role,
-      createdAt: newUser.createdAt,
-    };
+    return toPublicUser(newUser);
   }
 
   // 6. Admin - Kullanıcı Sil
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor', 'admin')
+  @Roles('admin')
   @Delete('users/:id')
   async deleteUser(
     @Param('id') id: string,
@@ -303,19 +253,32 @@ export class AuthController {
       throw new NotFoundException('Kullanıcı bulunamadı.');
     }
 
+    if (user.role === 'admin') {
+      const adminCount = await this.usersRepo.count({ where: { role: 'admin' } });
+      if (adminCount <= 1) {
+        throw new BadRequestException('Sistemdeki son admin kullanıcısı silinemez.');
+      }
+    }
+
     await this.usersRepo.delete(id);
 
-    // Denetim İzi
-    const nowStr = new Date().toTimeString().substring(0, 5);
-    await this.auditRepo.save({
-      id: randomUUID(),
-      timestamp: nowStr,
-      locationId: null,
-      action: 'ADMIN_KULLANICI_SIL',
-      userRole: currentUser.roles.join(','),
-      summary: `Yönetici kullanıcıyı sildi: ${user.fullName} (@${user.username})`,
-    });
+    await this.audit(
+      'ADMIN_KULLANICI_SIL',
+      `admin (${currentUser.name})`,
+      `Yönetici kullanıcıyı sildi: ${user.fullName} (@${user.username})`,
+    );
 
     return { success: true, message: `"${user.fullName}" kullanıcısı başarıyla silindi.` };
+  }
+
+  private async audit(action: string, userRole: string, summary: string): Promise<void> {
+    await this.auditRepo.save({
+      id: randomUUID(),
+      timestamp: new Date().toTimeString().substring(0, 5),
+      locationId: null,
+      action,
+      userRole,
+      summary,
+    });
   }
 }

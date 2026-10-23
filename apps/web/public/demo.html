@@ -840,18 +840,14 @@
           <label class="text-xs font-bold text-slate-700 block mb-1">Şifre <span class="text-rose-500">*</span></label>
           <input type="password" id="demoRegPassword" required placeholder="En az 4 karakter" class="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none">
         </div>
-        <div>
-          <label class="text-xs font-bold text-slate-700 block mb-1">Görevi / Rolü</label>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs border-blue-500 bg-blue-50 text-blue-900 font-bold">
-              <input type="radio" name="demoRegRole" value="employee" checked class="text-blue-600">
-              <span>🧹 Personel</span>
-            </label>
-            <label class="p-2.5 border rounded-xl cursor-pointer flex items-center gap-2 text-xs border-slate-200 text-slate-600 hover:bg-slate-50">
-              <input type="radio" name="demoRegRole" value="supervisor" class="text-purple-600">
-              <span>👑 Şef / Denetmen</span>
-            </label>
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+          <div class="flex items-center gap-2 text-xs font-bold text-slate-700 mb-0.5">
+            <i class="fa-solid fa-broom text-blue-600"></i>
+            <span>Başlangıç Rolü: Temizlik Personeli</span>
           </div>
+          <p class="text-[11px] text-slate-500">
+            Açık kayıtlar Personel olarak açılır. Şef veya Admin yetkileri Yönetici tarafından Admin Panelinden atanır.
+          </p>
         </div>
         <button type="submit" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center justify-center gap-2">
           <i class="fa-solid fa-user-check"></i> Kayıt Ol ve Giriş Yap
@@ -1924,8 +1920,7 @@
       const fullName = document.getElementById('demoRegFullName').value.trim();
       const username = document.getElementById('demoRegUsername').value.trim().toLowerCase();
       const password = document.getElementById('demoRegPassword').value.trim();
-      const roleElem = document.querySelector('input[name="demoRegRole"]:checked');
-      const role = roleElem ? roleElem.value : 'employee';
+      const role = 'employee';
 
       if (!fullName || !username || !password) {
         alert("Lütfen tüm alanları doldurunuz.");

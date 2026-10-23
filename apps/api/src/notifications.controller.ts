@@ -16,7 +16,7 @@ type AuthenticatedRequest = Request & { user: AuthenticatedUser };
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('supervisor')
+@Roles('supervisor', 'admin')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 

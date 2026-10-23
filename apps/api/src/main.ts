@@ -2,13 +2,15 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { assertAuthConfiguration } from './auth';
 
 async function bootstrap(): Promise<void> {
+  assertAuthConfiguration();
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
   app.useGlobalPipes(

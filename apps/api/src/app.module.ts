@@ -68,8 +68,14 @@ import { SeedService } from './seed.service';
           } as DataSourceOptions);
           return await ds.initialize();
         } else {
-          console.log(
-            '[Database] PostgreSQL servisi bulunamadı. Gömülü/In-Memory veritabanı (pg-mem) başarıyla başlatıldı.',
+          if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_IN_MEMORY_DB) {
+            throw new Error(
+              '[Güvenlik] PostgreSQL bağlantısı başarısız oldu! Üretim ortamında (NODE_ENV=production) ' +
+                'in-memory veritabanına sessiz geçiş engellenmiştir. Lütfen veritabanını başlatın.',
+            );
+          }
+          console.warn(
+            '[Database] PostgreSQL servisi bulunamadı. Geliştirme modu için in-memory veritabanı (pg-mem) başlatıldı. (Sunucu yeniden başlayınca sıfırlanır)',
           );
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           const { newDb } = require('pg-mem');
