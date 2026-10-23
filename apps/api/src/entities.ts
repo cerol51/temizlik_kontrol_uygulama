@@ -52,16 +52,16 @@ export class Location {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   schedule: string[];
 
-  @Column({ name: 'current_supervisor_id', length: 120, nullable: true })
+  @Column({ name: 'current_supervisor_id', type: 'varchar', length: 120, nullable: true })
   currentSupervisorId: string | null;
 
-  @Column({ name: 'current_supervisor_name', length: 120, nullable: true })
+  @Column({ name: 'current_supervisor_name', type: 'varchar', length: 120, nullable: true })
   currentSupervisorName: string | null;
 
-  @Column({ name: 'backup_supervisor_id', length: 120, nullable: true })
+  @Column({ name: 'backup_supervisor_id', type: 'varchar', length: 120, nullable: true })
   backupSupervisorId: string | null;
 
-  @Column({ name: 'backup_supervisor_name', length: 120, nullable: true })
+  @Column({ name: 'backup_supervisor_name', type: 'varchar', length: 120, nullable: true })
   backupSupervisorName: string | null;
 
   @Column({ length: 30, default: 'ACTIVE' })
@@ -208,22 +208,22 @@ export class Incident {
   @Column({ name: 'signal_count', type: 'int', default: 1 })
   signalCount: number;
 
-  @Column({ name: 'current_sup_id', length: 120, nullable: true })
+  @Column({ name: 'current_sup_id', type: 'varchar', length: 120, nullable: true })
   currentSupId: string | null;
 
-  @Column({ name: 'current_sup_name', length: 120, nullable: true })
+  @Column({ name: 'current_sup_name', type: 'varchar', length: 120, nullable: true })
   currentSupName: string | null;
 
-  @Column({ name: 'backup_sup_id', length: 120, nullable: true })
+  @Column({ name: 'backup_sup_id', type: 'varchar', length: 120, nullable: true })
   backupSupId: string | null;
 
-  @Column({ name: 'backup_sup_name', length: 120, nullable: true })
+  @Column({ name: 'backup_sup_name', type: 'varchar', length: 120, nullable: true })
   backupSupName: string | null;
 
-  @Column({ name: 'assigned_staff_id', length: 120, nullable: true })
+  @Column({ name: 'assigned_staff_id', type: 'varchar', length: 120, nullable: true })
   assignedStaffId: string | null;
 
-  @Column({ name: 'assigned_staff_name', length: 120, nullable: true })
+  @Column({ name: 'assigned_staff_name', type: 'varchar', length: 120, nullable: true })
   assignedStaffName: string | null;
 
   @Column({ name: 'is_escalated', type: 'boolean', default: false })
@@ -232,7 +232,7 @@ export class Incident {
   @Column({ length: 20 })
   time: string;
 
-  @Column({ name: 'resolved_at', length: 20, nullable: true })
+  @Column({ name: 'resolved_at', type: 'varchar', length: 20, nullable: true })
   resolvedAt: string | null;
 
   @Column({ name: 'resolved_at_utc', type: 'timestamptz', nullable: true })
@@ -290,7 +290,7 @@ export class SurveyFeedback {
   @Column({ name: 'issues_json', type: 'jsonb', default: () => "'[]'" })
   issuesJson: string[];
 
-  @Column({ name: 'client_hash', length: 128, nullable: true })
+  @Column({ name: 'client_hash', type: 'varchar', length: 128, nullable: true })
   clientHash: string | null;
 
   @Column({ length: 20 })

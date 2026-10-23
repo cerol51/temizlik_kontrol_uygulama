@@ -25,22 +25,51 @@ import {
 } from './auth';
 import { CurrentUser } from './user.decorator';
 
+import { IsOptional, IsString, MinLength } from 'class-validator';
+
 export class RegisterDto {
+  @IsString()
+  @MinLength(2)
   fullName: string;
+
+  @IsString()
+  @MinLength(2)
   username: string;
+
+  @IsString()
+  @MinLength(1)
   password: string;
+
+  @IsOptional()
+  @IsString()
   role?: string;
 }
 
 export class LoginDto {
+  @IsString()
+  @MinLength(1)
   username: string;
+
+  @IsString()
+  @MinLength(1)
   password: string;
 }
 
 export class CreateUserDto {
+  @IsString()
+  @MinLength(2)
   fullName: string;
+
+  @IsString()
+  @MinLength(2)
   username: string;
+
+  @IsString()
+  @MinLength(1)
   password: string;
+
+  @IsOptional()
+  @IsString()
   role?: string;
 }
 

@@ -123,6 +123,16 @@ export class UpdateScheduleDto {
   toleranceMinutes: number;
 }
 
+export class PushSubscriptionKeysDto {
+  @IsString()
+  @MaxLength(512)
+  p256dh: string;
+
+  @IsString()
+  @MaxLength(512)
+  auth: string;
+}
+
 export class CreatePushSubscriptionDto {
   @IsUrl({ protocols: ['https'], require_protocol: true })
   @IsString()
@@ -133,16 +143,6 @@ export class CreatePushSubscriptionDto {
   @ValidateNested()
   @Type(() => PushSubscriptionKeysDto)
   keys: PushSubscriptionKeysDto;
-}
-
-export class PushSubscriptionKeysDto {
-  @IsString()
-  @MaxLength(512)
-  p256dh: string;
-
-  @IsString()
-  @MaxLength(512)
-  auth: string;
 }
 
 export class CreateLocationDto {
