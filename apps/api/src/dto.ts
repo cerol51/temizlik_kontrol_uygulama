@@ -58,6 +58,11 @@ export class CreateCleaningRecordDto {
   @IsString()
   @MaxLength(120)
   staffName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  locationToken?: string;
 }
 
 export class CreateSupervisorAuditDto {

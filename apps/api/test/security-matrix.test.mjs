@@ -131,4 +131,103 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     const selfDelRes = await del(`/auth/users/${meRes.data.id}`, adminToken);
     assert.equal(selfDelRes.status, 400);
   });
+
+  await t.test('8. P1-1: Fiziki Varlık Doğrulaması (Proof-of-Presence) - Geçersiz token engellenmeli', async () => {
+    const locsRes = await get('/locations', employeeToken);
+    assert.equal(locsRes.status, 200);
+    assert.ok(locsRes.data.length > 0);
+    const loc = locsRes.data[0];
+
+    // Sahte/kötü niyetli QR tokenı ile temizlik beyanı denenirse:
+    const invalidTokenRes = await post(
+      `/locations/${loc.id}/cleanings`,
+      {
+        tasksConfirmed: true,
+        note: 'Uzaktan hileli beyan denemesi',
+        locationToken: 'fake-stolen-token-12345',
+      },
+      employeeToken,
+    );
+    assert.equal(invalidTokenRes.status, 400);
+    assert.match(invalidTokenRes.data.message, /Fiziki varlık doğrulaması başarısız/);
+
+    // Gerçek, sahada okutulan QR tokenı ile temizlik beyanı:
+    const validTokenRes = await post(
+      `/locations/${loc.id}/cleanings`,
+      {
+        tasksConfirmed: true,
+        note: 'Saha temizliği tamamlandı',
+        locationToken: loc.token,
+      },
+      employeeToken,
+    );
+    assert.equal(validTokenRes.status, 201);
+    assert.ok(validTokenRes.data.record);
+    assert.ok(validTokenRes.data.sla);
+  });
+
+  await t.test('9. P1-5: Ziyaretçi Anket Anti-Spam Koruması (3 dakika mükerrer oy engeli)', async () => {
+    const locsRes = await get('/locations');
+    const loc = locsRes.data[0];
+
+    // İlk anket gönderimi başarılı olmalı
+    const survey1 = await post('/surveys', {
+      locationId: loc.id,
+      rating: 'good',
+    });
+    assert.equal(survey1.status, 201);
+    assert.equal(survey1.data.success, true);
+
+    // Aynı cihaz / IP'den 3 dakika içinde 2. oy kullanımı engellenmeli
+    const survey2 = await post('/surveys', {
+      locationId: loc.id,
+      rating: 'bad',
+      issues: ['Koku'],
+    });
+    assert.equal(survey2.status, 400);
+    assert.match(survey2.data.message, /kısa süre önce oy kullandınız/);
+  });
+
+  await t.test('10. P1-4: Çakışmasız Benzersiz Bilet Numaratörü (INC-YYYYMMDD-HHMMSS-XXXX)', async () => {
+    const locsRes = await get('/locations', supervisorToken);
+    const loc = locsRes.data[0];
+
+    // Şef uygunsuzluk denetimi gönderir (isApproved: false)
+    const auditRes = await post(
+      `/locations/${loc.id}/audits`,
+      {
+        isApproved: false,
+        checklist: { 'Zemin Temizliği': false },
+        note: 'Zemin ıslak ve sabun eksik',
+      },
+      supervisorToken,
+    );
+    assert.equal(auditRes.status, 201);
+    assert.ok(auditRes.data.correctiveIncident);
+
+    const ticketId = auditRes.data.correctiveIncident.id;
+    // Format doğrulaması: INC-YYYYMMDD-HHMMSS-XXXX
+    assert.match(ticketId, /^INC-\d{8}-\d{6}-\d{4}$/);
+  });
+
+  await t.test('11. P1-3: SLA Tolerans İçi Doğruluk Değerlendirmesi', async () => {
+    const { evaluateSLA } = await import('../dist/restrooms.controller.js');
+    const schedule = ['10:00', '12:00', '14:00'];
+
+    // 1. Tolerans içi (+5 dk) zamanında sayılmalı (SLA compliant)
+    const onTimeResult = evaluateSLA(schedule, '10:05', 15);
+    assert.equal(onTimeResult.status, 'ON_TIME');
+    assert.equal(onTimeResult.badgeClass, 'badge-ontime');
+
+    // 2. Toleransı aşan (+25 dk) gecikmeli sayılmalı
+    const lateResult = evaluateSLA(schedule, '10:25', 15);
+    assert.equal(lateResult.status, 'LATE');
+    assert.equal(lateResult.badgeClass, 'badge-notdone');
+
+    // 3. Toleransı aşan erken (-30 dk) erken plan dışı sayılmalı
+    const earlyResult = evaluateSLA(schedule, '09:30', 15);
+    assert.equal(earlyResult.status, 'EARLY');
+    assert.equal(earlyResult.badgeClass, 'badge-outoftime');
+  });
 });
+

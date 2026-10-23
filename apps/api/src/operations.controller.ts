@@ -57,8 +57,8 @@ export class ReportsController {
 
     cleanings.forEach((c) => {
       if (c.slaStatus === 'ON_TIME') onTimeCount++;
-      else if (c.slaStatus === 'OUT_OF_TIME') outOfTimeCount++;
-      else if (c.slaStatus === 'NOT_DONE') notDoneCount++;
+      else if (c.slaStatus === 'OUT_OF_TIME' || c.slaStatus === 'EARLY') outOfTimeCount++;
+      else if (c.slaStatus === 'NOT_DONE' || c.slaStatus === 'LATE' || c.slaStatus === 'MISSED') notDoneCount++;
     });
 
     const onTimeRate = totalCleans > 0 ? Math.round((onTimeCount / totalCleans) * 100) : 0;

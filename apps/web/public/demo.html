@@ -1052,6 +1052,18 @@
       }
     }
 
+    function generateIncidentId() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mi = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      return `INC-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rand}`;
+    }
+
     function evaluateSLA(targetSlot, actualTime, toleranceMinutes = 15) {
       if (!actualTime) return { status: 'WAITING', label: 'Bekliyor', badgeClass: 'badge-waiting', diff: null };
       const [targetH, targetM] = targetSlot.split(':').map(Number);
@@ -1060,15 +1072,19 @@
       const actualTotal = actualH * 60 + actualM;
       const diff = actualTotal - targetTotal;
       const absDiff = Math.abs(diff);
+      const signText = diff > 0 ? `+${diff} dk` : `${diff} dk`;
 
-      if (absDiff === 0) {
-        return { status: 'ON_TIME', label: 'Zamanında', badgeClass: 'badge-ontime', diff: 0 };
-      } else if (absDiff >= 1 && absDiff <= toleranceMinutes) {
-        const signText = diff > 0 ? `+${diff} dk` : `${diff} dk`;
-        return { status: 'OUT_OF_TIME', label: `Plan Dışı (${signText})`, badgeClass: 'badge-outoftime', diff };
+      if (absDiff <= toleranceMinutes) {
+        return {
+          status: 'ON_TIME',
+          label: absDiff === 0 ? 'Tam Zamanında (0 dk)' : `Zamanında / Tolerans İçi (${signText})`,
+          badgeClass: 'badge-ontime',
+          diff
+        };
+      } else if (diff > toleranceMinutes) {
+        return { status: 'LATE', label: `Gecikmeli (${signText})`, badgeClass: 'badge-notdone', diff };
       } else {
-        const signText = diff > 0 ? `+${diff} dk gecikme` : `${diff} dk erken`;
-        return { status: 'NOT_DONE', label: `Yapılmadı (${signText})`, badgeClass: 'badge-notdone', diff };
+        return { status: 'EARLY', label: `Plan Dışı Erken (${signText})`, badgeClass: 'badge-outoftime', diff };
       }
     }
 
@@ -1285,7 +1301,7 @@
         });
       } else {
         const newIncident = {
-          id: 'INC-' + Math.floor(1000 + Math.random() * 9000),
+          id: generateIncidentId(),
           locationId: state.currentLocationId,
           time: time,
           createdAtEpoch: Date.now(),
@@ -1488,6 +1504,7 @@
       state.cleaningLogs.push({
         id: 'CLN-' + Date.now(),
         locationId: state.currentLocationId,
+        locationToken: curLoc.token,
         staffName: staffName,
         time: actualTime,
         targetSlot: targetSlot,
@@ -1538,7 +1555,7 @@
 
       if (!isApproved) {
         state.incidents.push({
-          id: 'INC-' + Math.floor(1000 + Math.random() * 9000),
+          id: generateIncidentId(),
           locationId: state.currentLocationId,
           time: getCurrentTime(),
           createdAtEpoch: Date.now(),

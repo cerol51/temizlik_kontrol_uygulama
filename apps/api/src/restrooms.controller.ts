@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { Request } from 'express';
 import { Repository } from 'typeorm';
 import { AuthenticatedUser, JwtAuthGuard, Public, Roles, RolesGuard } from './auth';
@@ -44,7 +44,19 @@ function getCurrentTimeStr(date = new Date()): string {
   return date.toTimeString().substring(0, 5);
 }
 
-function evaluateSLA(
+export function generateIncidentId(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mi = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `INC-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rand}`;
+}
+
+export function evaluateSLA(
   schedule: string[],
   actualTime: string,
   toleranceMinutes = 15,
@@ -77,29 +89,30 @@ function evaluateSLA(
     }
   }
 
-  if (minDiff === 0) {
+  const signText = signedDiff > 0 ? `+${signedDiff} dk` : `${signedDiff} dk`;
+
+  // Tolerans içi temizlik zamanında kabul edilir (SLA uyumlu)
+  if (minDiff <= toleranceMinutes) {
     return {
       status: 'ON_TIME',
-      label: 'Zamanında',
+      label: minDiff === 0 ? 'Tam Zamanında (0 dk)' : `Zamanında / Tolerans İçi (${signText})`,
       badgeClass: 'badge-ontime',
-      diff: 0,
+      diff: signedDiff,
       targetSlot: closest,
     };
-  } else if (minDiff >= 1 && minDiff <= toleranceMinutes) {
-    const signText = signedDiff > 0 ? `+${signedDiff} dk` : `${signedDiff} dk`;
+  } else if (signedDiff > toleranceMinutes) {
     return {
-      status: 'OUT_OF_TIME',
-      label: `Plan Dışı (${signText})`,
-      badgeClass: 'badge-outoftime',
+      status: 'LATE',
+      label: `Gecikmeli (${signText})`,
+      badgeClass: 'badge-notdone',
       diff: signedDiff,
       targetSlot: closest,
     };
   } else {
-    const signText = signedDiff > 0 ? `+${signedDiff} dk gecikme` : `${signedDiff} dk erken`;
     return {
-      status: 'NOT_DONE',
-      label: `Yapılmadı (${signText})`,
-      badgeClass: 'badge-notdone',
+      status: 'EARLY',
+      label: `Plan Dışı Erken (${signText})`,
+      badgeClass: 'badge-outoftime',
       diff: signedDiff,
       targetSlot: closest,
     };
@@ -266,6 +279,13 @@ export class RestroomsController implements OnModuleDestroy {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const location = await this.requireLocation(locationId);
+
+    // P1-1: Proof-of-Presence (Fiziki Varlık Doğrulaması)
+    // Gönderilen QR token mahalin güncel tokenı ile eşleşmelidir
+    if (body.locationToken && body.locationToken !== location.token) {
+      throw new BadRequestException('Fiziki varlık doğrulaması başarısız: Geçersiz veya süresi dolmuş QR kod tokenı.');
+    }
+
     const actualTime = getCurrentTimeStr();
     const sla = evaluateSLA(location.schedule, actualTime, location.toleranceMinutes);
 
@@ -339,7 +359,7 @@ export class RestroomsController implements OnModuleDestroy {
     // Eğer denetim onaylanmazsa (Uygunsuzluk), sistem OTOMATİK düzeltici olay üretir
     let correctiveIncident: Incident | null = null;
     if (!body.isApproved) {
-      const incidentId = 'INC-' + Math.floor(1000 + Math.random() * 9000);
+      const incidentId = generateIncidentId();
       correctiveIncident = await this.incidents.save({
         id: incidentId,
         locationId: location.id,
@@ -388,7 +408,19 @@ export class RestroomsController implements OnModuleDestroy {
     else if (ratingStr === '3') ratingStr = 'fair';
     else if (ratingStr === '1' || ratingStr === '2') ratingStr = 'bad';
 
-    const clientHash = body.clientHash || req.ip || 'anonymous-client';
+    // P1-5: Anti-Spam & Kriptografik Cihaz Parmak İzi (Fingerprint)
+    const forwarded = req.headers['x-forwarded-for'];
+    const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.ip) || req.socket?.remoteAddress || '127.0.0.1';
+    const ua = req.headers['user-agent'] || 'unknown-ua';
+    const dayStr = new Date().toISOString().substring(0, 10);
+    const serverFingerprint = createHash('sha256')
+      .update(`${ip}|${ua}|${dayStr}|wc-survey-salt`)
+      .digest('hex')
+      .substring(0, 32);
+
+    const clientHash = body.clientHash
+      ? `${serverFingerprint}_${body.clientHash.substring(0, 16)}`
+      : serverFingerprint;
 
     // 3 dakikalık kötüye kullanım / mükerrer oy kontrolü
     const threeMinAgo = new Date(Date.now() - 3 * 60 * 1000);
@@ -431,8 +463,8 @@ export class RestroomsController implements OnModuleDestroy {
         openIncident.issuesJson = mergedIssues;
         await this.incidents.save(openIncident);
       } else {
-        // Yeni Incident oluştur
-        const incidentId = 'INC-' + Math.floor(1000 + Math.random() * 9000);
+        // Yeni Incident oluştur (Çakışmasız benzersiz bilet ID'si)
+        const incidentId = generateIncidentId();
         const newIncident = await this.incidents.save({
           id: incidentId,
           locationId: location.id,

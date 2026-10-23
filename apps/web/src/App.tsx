@@ -424,6 +424,7 @@ export default function App() {
     try {
       setBusy(true);
       const token = await accessToken();
+      const curLoc = locations.find((l) => l.id === selectedId);
       const res = await api<{ sla: { label: string } }>(
         `/locations/${selectedId}/cleanings`,
         token,
@@ -432,6 +433,7 @@ export default function App() {
           body: JSON.stringify({
             tasksConfirmed: task1 && task2 && task3 && task4,
             note: staffNote,
+            locationToken: curLoc?.token,
           }),
         },
       );
@@ -2109,7 +2111,23 @@ export default function App() {
                     </div>
                     <div className="flex items-center justify-between text-slate-500 text-[11px]">
                       <span>Hedef Slot: {l.plannedSlot}</span>
-                      <span className="font-bold text-slate-700">{l.slaStatus}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          l.slaStatus === 'ON_TIME'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : l.slaStatus === 'LATE' || l.slaStatus === 'NOT_DONE'
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                            : 'bg-amber-100 text-amber-800 border border-amber-300'
+                        }`}
+                      >
+                        {l.slaStatus === 'ON_TIME'
+                          ? '✓ Zamanında'
+                          : l.slaStatus === 'LATE'
+                          ? '⚠️ Gecikmeli'
+                          : l.slaStatus === 'EARLY'
+                          ? 'ℹ️ Erken'
+                          : l.slaStatus}
+                      </span>
                     </div>
                   </div>
                 ))
