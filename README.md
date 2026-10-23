@@ -51,7 +51,7 @@ Tek bir QR kod üzerinden çoklu rol yönlendirmesi (Zero-Friction Routing), din
 
 Kurulum veya Docker bulunmayan ortamlarda tüm iş kurallarını (SLA motoru, sesli siren, olay atama, otomatik eskalasyon, 6 maddelik checklist ve yönetim dashboard'u) denemek için:
 - Windows'ta: Proje klasöründeki **`Baslat.bat`** dosyasına çift tıklayın.
-- Mac / Linux'ta: Tarayıcınızda doğrudan **`apps/web/public/demo.html`** dosyasını açın.
+- Mac / Linux'ta: Tarayıcınızda doğrudan **`apps/web/public/index.html`** dosyasını açın.
 
 Bu çevrimdışı referans prototip, `localStorage` üzerinde çalışan bağımsız durum makinesi ile tüm v2.0 kurallarını eksiksiz simüle eder.
 
