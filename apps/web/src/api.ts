@@ -44,6 +44,16 @@ export interface PublicLocationStatus {
   todayCleanings: Array<{ time: string; targetSlot: string }>;
 }
 
+export interface SlotEvaluation {
+  slot: string;
+  actualTime: string | null;
+  staffName: string | null;
+  status: 'ON_TIME' | 'LATE' | 'EARLY' | 'MISSED' | 'WAITING';
+  label: string;
+  badgeClass: string;
+  diffMinutes: number | null;
+}
+
 export interface SupervisorLocationStatus {
   location: Location;
   lastCleaning: {
@@ -70,6 +80,13 @@ export interface SupervisorLocationStatus {
     slaStatus: string;
     diffMinutes: number;
   }>;
+  dailyScheduleStatus?: {
+    slots: SlotEvaluation[];
+    missedCount: number;
+    onTimeCount: number;
+    lateCount: number;
+    pendingCount: number;
+  };
 }
 
 export interface DashboardKPIs {
@@ -79,6 +96,9 @@ export interface DashboardKPIs {
   outOfTimeRate: number;
   notDoneCount: number;
   notDoneRate: number;
+  missedSlotCount: number;
+  totalPlannedSlotsToday: number;
+  complianceRate: number;
   totalSurveys: number;
   csatRate: number;
   avgMTTR: number;
@@ -98,6 +118,8 @@ export interface LocationMatrixRow {
   backupSupervisor: string;
   slotCount: number;
   toleranceMinutes: number;
+  missedCount?: number;
+  dailySchedule?: SlotEvaluation[];
   lastClean: string | null;
   lastAudit: string | null;
   incidentStatus: 'NORMAL' | 'DISPATCHED' | 'ESCALATED';

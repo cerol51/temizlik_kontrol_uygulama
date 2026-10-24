@@ -119,6 +119,90 @@ export function evaluateSLA(
   }
 }
 
+export interface SlotEvaluation {
+  slot: string;
+  actualTime: string | null;
+  staffName: string | null;
+  status: 'ON_TIME' | 'LATE' | 'EARLY' | 'MISSED' | 'WAITING';
+  label: string;
+  badgeClass: string;
+  diffMinutes: number | null;
+}
+
+export function evaluateDailySchedule(
+  schedule: string[],
+  cleanings: CleaningRecord[],
+  toleranceMinutes = 15,
+  currentTimeStr?: string,
+): { slots: SlotEvaluation[]; missedCount: number; onTimeCount: number; lateCount: number; pendingCount: number } {
+  const nowStr = currentTimeStr || getCurrentTimeStr();
+  const [nowH, nowM] = nowStr.split(':').map(Number);
+  const nowTotal = nowH * 60 + nowM;
+
+  let missedCount = 0;
+  let onTimeCount = 0;
+  let lateCount = 0;
+  let pendingCount = 0;
+
+  const slots: SlotEvaluation[] = (schedule || []).map((slot) => {
+    const [sH, sM] = slot.split(':').map(Number);
+    const slotTotal = sH * 60 + sM;
+
+    // Bu slota eşleşen temizlik kaydı (plannedSlot kontrolü)
+    const matchingLog = cleanings.find((c) => c.plannedSlot === slot);
+
+    if (matchingLog) {
+      const sla = evaluateSLA(schedule, matchingLog.actualTime, toleranceMinutes);
+      if (sla.status === 'ON_TIME') onTimeCount++;
+      else if (sla.status === 'LATE') lateCount++;
+      return {
+        slot,
+        actualTime: matchingLog.actualTime,
+        staffName: matchingLog.staffName,
+        status: sla.status as 'ON_TIME' | 'LATE' | 'EARLY',
+        label: sla.label,
+        badgeClass: sla.badgeClass,
+        diffMinutes: sla.diff,
+      };
+    }
+
+    // Temizlik kaydı yoksa
+    if (nowTotal > slotTotal + toleranceMinutes) {
+      missedCount++;
+      const overdueMins = nowTotal - slotTotal;
+      return {
+        slot,
+        actualTime: null,
+        staffName: null,
+        status: 'MISSED',
+        label: `Yapılmadı / Tolerans Aşıldı (+${overdueMins} dk)`,
+        badgeClass: 'badge-notdone',
+        diffMinutes: overdueMins,
+      };
+    } else {
+      pendingCount++;
+      const isWithinWindow = Math.abs(nowTotal - slotTotal) <= toleranceMinutes;
+      return {
+        slot,
+        actualTime: null,
+        staffName: null,
+        status: 'WAITING',
+        label: isWithinWindow ? 'Müdahale Zamanı (Bekliyor)' : 'Bekliyor',
+        badgeClass: isWithinWindow ? 'badge-outoftime' : 'badge-waiting',
+        diffMinutes: null,
+      };
+    }
+  });
+
+  return {
+    slots,
+    missedCount,
+    onTimeCount,
+    lateCount,
+    pendingCount,
+  };
+}
+
 @Controller()
 export class RestroomsController implements OnModuleDestroy {
   private readonly escalationTimer: NodeJS.Timeout;
@@ -260,12 +344,19 @@ export class RestroomsController implements OnModuleDestroy {
       }),
     ]);
 
+    const dailyScheduleStatus = evaluateDailySchedule(
+      location.schedule,
+      cleanings,
+      location.toleranceMinutes,
+    );
+
     return {
       location,
       lastCleaning,
       lastAudit,
       activeIncidents: activeIncidents.filter((i) => i.status !== 'VERIFIED_CLOSED'),
       recentCleanings: cleanings,
+      dailyScheduleStatus,
     };
   }
 

@@ -426,7 +426,7 @@
 
       <!-- SEKME 1: PERFORMANS & KPI -->
       <div id="admin-section-overview" class="space-y-4">
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div class="grid grid-cols-2 sm:grid-cols-6 gap-3">
           <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
             <span class="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
             <span id="kpi-total-cleans" class="text-2xl font-black text-blue-600">0</span>
@@ -443,11 +443,16 @@
             <span class="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
           </div>
           <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-            <span class="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (>Tol.)</span>
-            <span id="kpi-sla-notdone" class="text-2xl font-black text-rose-600">0</span>
+            <span class="text-[11px] font-bold text-slate-500 uppercase block">Gecikmeli (>Tol.)</span>
+            <span id="kpi-sla-notdone" class="text-2xl font-black text-amber-700">0</span>
             <span class="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
           </div>
-          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
+          <div class="bg-white p-3.5 rounded-xl border border-rose-200 shadow-sm text-center bg-rose-50/40">
+            <span class="text-[11px] font-bold text-rose-800 uppercase block">Kaçırılan (MISSED)</span>
+            <span id="kpi-sla-missed" class="text-2xl font-black text-rose-600">0</span>
+            <span class="text-[10px] text-rose-500 block mt-0.5">Hiç yapılmayan</span>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
             <span class="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
             <span id="kpi-csat" class="text-2xl font-black text-purple-600">0%</span>
             <span class="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
@@ -1135,7 +1140,18 @@
     }
 
     function evaluateSLA(targetSlot, actualTime, toleranceMinutes = 15) {
-      if (!actualTime) return { status: 'WAITING', label: 'Bekliyor', badgeClass: 'badge-waiting', diff: null };
+      if (!actualTime) {
+        const curTimeStr = getCurrentTime();
+        const [cH, cM] = curTimeStr.split(':').map(Number);
+        const [tH, tM] = targetSlot.split(':').map(Number);
+        const curTotal = cH * 60 + cM;
+        const targetTotal = tH * 60 + tM;
+        if (curTotal > targetTotal + toleranceMinutes) {
+          const overdue = curTotal - targetTotal;
+          return { status: 'MISSED', label: `Yapılmadı / Tolerans Aşıldı (+${overdue} dk)`, badgeClass: 'badge-notdone', diff: overdue };
+        }
+        return { status: 'WAITING', label: 'Bekliyor', badgeClass: 'badge-waiting', diff: null };
+      }
       const [targetH, targetM] = targetSlot.split(':').map(Number);
       const [actualH, actualM] = actualTime.split(':').map(Number);
       const targetTotal = targetH * 60 + targetM;
@@ -1833,20 +1849,35 @@
       let onTimeCount = 0;
       let outOfTimeCount = 0;
       let notDoneCount = 0;
+      let missedCount = 0;
 
       state.cleaningLogs.forEach(l => {
         const loc = state.locations.find(x => x.id === l.locationId);
         const tol = loc ? loc.toleranceMinutes || 15 : 15;
         const sla = evaluateSLA(l.targetSlot, l.time, tol);
         if (sla.status === 'ON_TIME') onTimeCount++;
-        else if (sla.status === 'OUT_OF_TIME') outOfTimeCount++;
-        else if (sla.status === 'NOT_DONE') notDoneCount++;
+        else if (sla.status === 'OUT_OF_TIME' || sla.status === 'EARLY') outOfTimeCount++;
+        else if (sla.status === 'NOT_DONE' || sla.status === 'LATE') notDoneCount++;
+      });
+
+      state.locations.forEach(loc => {
+        const tol = loc.toleranceMinutes || 15;
+        const locLogs = state.cleaningLogs.filter(l => l.locationId === loc.id);
+        (loc.schedule || []).forEach(slot => {
+          const hasLog = locLogs.some(l => l.targetSlot === slot);
+          if (!hasLog) {
+            const sla = evaluateSLA(slot, null, tol);
+            if (sla.status === 'MISSED') missedCount++;
+          }
+        });
       });
 
       const onTimeRate = totalCleans > 0 ? Math.round((onTimeCount / totalCleans) * 100) : 0;
       document.getElementById('kpi-sla-ontime').textContent = `${onTimeRate}%`;
       document.getElementById('kpi-sla-outoftime').textContent = outOfTimeCount;
       document.getElementById('kpi-sla-notdone').textContent = notDoneCount;
+      const missedEl = document.getElementById('kpi-sla-missed');
+      if (missedEl) missedEl.textContent = missedCount;
 
       const totalFeedbacks = state.feedbacks.length;
       const goodFeedbacks = state.feedbacks.filter(f => f.rating === 'good').length;

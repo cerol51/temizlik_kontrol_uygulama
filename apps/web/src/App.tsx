@@ -1307,15 +1307,54 @@ export default function App() {
 
               {staffSubTab === 'schedule' && (
                 <div className="space-y-3">
-                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-xs text-blue-900">
-                    <strong>Planlanan Temizlik Slotları:</strong> Bu mahal için tanımlı plan ±{curLocation?.toleranceMinutes || 15} dakika toleransla denetlenmektedir.
+                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-xs text-blue-900 flex items-center justify-between">
+                    <div>
+                      <strong>Bugünkü Temizlik Planı:</strong> Bu mahal için tanımlı slotlar ±{curLocation?.toleranceMinutes || 15} dakika toleransla denetlenmektedir.
+                    </div>
+                    {supervisorStatus?.dailyScheduleStatus && supervisorStatus.dailyScheduleStatus.missedCount > 0 && (
+                      <span className="bg-rose-600 text-white font-bold px-2 py-0.5 rounded text-[10px] whitespace-nowrap">
+                        {supervisorStatus.dailyScheduleStatus.missedCount} Slot Kaçırıldı
+                      </span>
+                    )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {curLocation?.schedule?.map((time, idx) => (
-                      <div key={idx} className="bg-slate-50 border border-slate-200 p-2.5 rounded-lg text-center font-mono font-bold text-slate-800 text-xs">
-                        {time}
-                      </div>
-                    )) || <p className="text-xs text-slate-400">Plan bulunamadı.</p>}
+                  <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-sm">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="py-2 px-2.5">Slot Saati</th>
+                          <th className="py-2 px-2.5">Gerçekleşen</th>
+                          <th className="py-2 px-2.5">Personel</th>
+                          <th className="py-2 px-2.5">SLA Durumu</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {supervisorStatus?.dailyScheduleStatus?.slots ? (
+                          supervisorStatus.dailyScheduleStatus.slots.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-2.5 font-bold font-mono text-slate-800">{item.slot}</td>
+                              <td className="py-2.5 px-2.5 font-mono text-slate-700">{item.actualTime || '--:--'}</td>
+                              <td className="py-2.5 px-2.5 text-slate-600">{item.staffName || '-'}</td>
+                              <td className="py-2.5 px-2.5">
+                                <span className={`${item.badgeClass} px-2 py-0.5 rounded font-bold text-[10px] whitespace-nowrap`}>
+                                  {item.label}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          curLocation?.schedule?.map((time, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-2.5 font-bold font-mono text-slate-800">{time}</td>
+                              <td className="py-2.5 px-2.5 font-mono text-slate-400">--:--</td>
+                              <td className="py-2.5 px-2.5 text-slate-400">-</td>
+                              <td className="py-2.5 px-2.5">
+                                <span className="badge-waiting px-2 py-0.5 rounded font-bold text-[10px]">Bekliyor</span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
@@ -1517,6 +1556,29 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Kaçırılan (MISSED) Temizlik Slotu Uyarısı */}
+                {supervisorStatus?.dailyScheduleStatus && supervisorStatus.dailyScheduleStatus.missedCount > 0 && (
+                  <div className="p-3.5 bg-rose-50 border-2 border-rose-400 rounded-xl flex items-center justify-between text-xs text-rose-900 shadow-sm animate-pulse">
+                    <div className="flex items-center gap-2.5">
+                      <i className="fa-solid fa-triangle-exclamation text-rose-600 text-xl"></i>
+                      <div>
+                        <strong className="block text-rose-950 font-black">
+                          DİKKAT: {supervisorStatus.dailyScheduleStatus.missedCount} Temizlik Slotu Kaçırıldı!
+                        </strong>
+                        <span className="text-[11px] text-rose-700">
+                          Tolerans süresi dolduğu halde sisteme temizlik beyanı girilmedi.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setStaffScheduleOpen(true)}
+                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow whitespace-nowrap"
+                    >
+                      Slotları Gör
+                    </button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setStaffPastOpen(true)}
@@ -1639,11 +1701,11 @@ export default function App() {
             {/* ŞEF SEKME 2: KALİTE & SLA PANELİ */}
             {supervisorSubTab === 'kpi' && dashboard && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                   <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                     <span className="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
                     <span className="text-2xl font-black text-blue-600">{dashboard.kpis.totalCleans}</span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Tamamlanan</span>
                   </div>
                   <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                     <span className="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
@@ -1653,17 +1715,22 @@ export default function App() {
                   <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                     <span className="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
                     <span className="text-2xl font-black text-amber-600">{dashboard.kpis.outOfTimeCount}</span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Tolerans içi erken</span>
                   </div>
                   <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (&gt;Tol.)</span>
-                    <span className="text-2xl font-black text-rose-600">{dashboard.kpis.notDoneCount}</span>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase block">Gecikmeli (&gt;Tol.)</span>
+                    <span className="text-2xl font-black text-amber-700">{dashboard.kpis.notDoneCount}</span>
                     <span className="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
                   </div>
-                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
+                  <div className="bg-white p-3.5 rounded-xl border border-rose-200 shadow-sm text-center bg-rose-50/40">
+                    <span className="text-[11px] font-bold text-rose-800 uppercase block">Kaçırılan (MISSED)</span>
+                    <span className="text-2xl font-black text-rose-600">{dashboard.kpis.missedSlotCount ?? 0}</span>
+                    <span className="text-[10px] text-rose-500 block mt-0.5">Hiç yapılmayan</span>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                     <span className="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
                     <span className="text-2xl font-black text-purple-600">{dashboard.kpis.csatRate}%</span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket</span>
                   </div>
                 </div>
 
@@ -1709,6 +1776,7 @@ export default function App() {
                       <th className="py-2 px-3">Mahal Kodu / Adı</th>
                       <th className="py-2 px-3">Nöbetçi / Yedek Şef</th>
                       <th className="py-2 px-3">Plan / Tolerans</th>
+                      <th className="py-2 px-3">Kaçırılan (MISSED)</th>
                       <th className="py-2 px-3">Son Temizlik</th>
                       <th className="py-2 px-3">Son Şef Denetimi</th>
                       <th className="py-2 px-3">Olay Durumu</th>
@@ -1727,6 +1795,15 @@ export default function App() {
                         </td>
                         <td className="py-2 px-3 font-mono text-purple-700 font-bold">
                           {row.slotCount} Slot (±{row.toleranceMinutes} dk)
+                        </td>
+                        <td className="py-2 px-3">
+                          {row.missedCount && row.missedCount > 0 ? (
+                            <span className="px-2 py-0.5 rounded font-bold bg-rose-100 text-rose-800 text-[10px] whitespace-nowrap">
+                              {row.missedCount} Kaçırıldı
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 font-semibold text-[11px]">✓ Eksiksiz</span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-slate-600">{row.lastClean || '-'}</td>
                         <td className="py-2 px-3 text-slate-600">{row.lastAudit || '-'}</td>
@@ -1946,11 +2023,11 @@ export default function App() {
 
                 {dashboard && (
                   <>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                       <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                         <span className="text-[11px] font-bold text-slate-500 uppercase block">Toplam Temizlik</span>
                         <span className="text-2xl font-black text-blue-600">{dashboard.kpis.totalCleans}</span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">Tamamlanan işlem</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Tamamlanan</span>
                       </div>
                       <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                         <span className="text-[11px] font-bold text-slate-500 uppercase block">Zamanında Uyum %</span>
@@ -1960,17 +2037,22 @@ export default function App() {
                       <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                         <span className="text-[11px] font-bold text-slate-500 uppercase block">Plan Dışı (±Tol.)</span>
                         <span className="text-2xl font-black text-amber-600">{dashboard.kpis.outOfTimeCount}</span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">Tolerans dahilinde</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Tolerans içi erken</span>
                       </div>
                       <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase block">Yapılmadı (&gt;Tol.)</span>
-                        <span className="text-2xl font-black text-rose-600">{dashboard.kpis.notDoneCount}</span>
+                        <span className="text-[11px] font-bold text-slate-500 uppercase block">Gecikmeli (&gt;Tol.)</span>
+                        <span className="text-2xl font-black text-amber-700">{dashboard.kpis.notDoneCount}</span>
                         <span className="text-[10px] text-slate-400 block mt-0.5">Toleransı aşan</span>
                       </div>
-                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center col-span-2 sm:col-span-1">
+                      <div className="bg-white p-3.5 rounded-xl border border-rose-200 shadow-sm text-center bg-rose-50/40">
+                        <span className="text-[11px] font-bold text-rose-800 uppercase block">Kaçırılan (MISSED)</span>
+                        <span className="text-2xl font-black text-rose-600">{dashboard.kpis.missedSlotCount ?? 0}</span>
+                        <span className="text-[10px] text-rose-500 block mt-0.5">Hiç yapılmayan</span>
+                      </div>
+                      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm text-center">
                         <span className="text-[11px] font-bold text-slate-500 uppercase block">Memnuniyet (CSAT)</span>
                         <span className="text-2xl font-black text-purple-600">{dashboard.kpis.csatRate}%</span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket Yanıtı</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">Olumlu Anket</span>
                       </div>
                     </div>
 
@@ -2233,6 +2315,7 @@ export default function App() {
                       <th className="py-2 px-3">Mahal Kodu / Adı</th>
                       <th className="py-2 px-3">Nöbetçi / Yedek Şef</th>
                       <th className="py-2 px-3">Plan / Tolerans</th>
+                      <th className="py-2 px-3">Kaçırılan (MISSED)</th>
                       <th className="py-2 px-3">Son Temizlik</th>
                       <th className="py-2 px-3">Son Şef Denetimi</th>
                       <th className="py-2 px-3">Olay Durumu</th>
@@ -2251,6 +2334,15 @@ export default function App() {
                         </td>
                         <td className="py-2 px-3 font-mono text-purple-700 font-bold">
                           {row.slotCount} Slot (±{row.toleranceMinutes} dk)
+                        </td>
+                        <td className="py-2 px-3">
+                          {row.missedCount && row.missedCount > 0 ? (
+                            <span className="px-2 py-0.5 rounded font-bold bg-rose-100 text-rose-800 text-[10px] whitespace-nowrap">
+                              {row.missedCount} Kaçırıldı
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 font-semibold text-[11px]">✓ Eksiksiz</span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-slate-600">{row.lastClean || '-'}</td>
                         <td className="py-2 px-3 text-slate-600">{row.lastAudit || '-'}</td>
@@ -2569,20 +2661,49 @@ export default function App() {
               </button>
             </div>
             <div className="p-4 max-h-96 overflow-y-auto">
+              <div className="text-xs text-slate-600 mb-3 space-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                <p className="font-semibold text-slate-800">SLA Uyum Kriterleri (Geçerli Tolerans: ±{curLocation?.toleranceMinutes || 15} dk):</p>
+                <div className="flex flex-wrap gap-2 text-[10px] mt-1">
+                  <span className="badge-ontime px-2 py-0.5 rounded font-bold">✓ Zamanında: 0 dk veya Tolerans İçi</span>
+                  <span className="badge-outoftime px-2 py-0.5 rounded font-bold">⏱ Plan Dışı: Erken</span>
+                  <span className="badge-notdone px-2 py-0.5 rounded font-bold">✗ Gecikmeli veya Kaçırıldı</span>
+                </div>
+              </div>
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                   <tr>
                     <th className="py-2 px-2.5">Planlanan Saat</th>
-                    <th className="py-2 px-2.5">Tolerans</th>
+                    <th className="py-2 px-2.5">Gerçekleşen</th>
+                    <th className="py-2 px-2.5">Personel</th>
+                    <th className="py-2 px-2.5">SLA Durumu</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {curLocation?.schedule?.map((slot, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-2.5 font-bold font-mono text-slate-800">{slot}</td>
-                      <td className="py-2.5 px-2.5 text-slate-600">±{curLocation.toleranceMinutes} dk</td>
-                    </tr>
-                  ))}
+                  {supervisorStatus?.dailyScheduleStatus?.slots ? (
+                    supervisorStatus.dailyScheduleStatus.slots.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2.5 font-bold font-mono text-slate-800">{item.slot}</td>
+                        <td className="py-2.5 px-2.5 font-mono text-slate-700">{item.actualTime || '--:--'}</td>
+                        <td className="py-2.5 px-2.5 text-slate-600">{item.staffName || '-'}</td>
+                        <td className="py-2.5 px-2.5">
+                          <span className={`${item.badgeClass} px-2 py-0.5 rounded font-bold text-[10px] whitespace-nowrap`}>
+                            {item.label}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    curLocation?.schedule?.map((slot, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-2.5 font-bold font-mono text-slate-800">{slot}</td>
+                        <td className="py-2.5 px-2.5 font-mono text-slate-400">--:--</td>
+                        <td className="py-2.5 px-2.5 text-slate-400">-</td>
+                        <td className="py-2.5 px-2.5">
+                          <span className="badge-waiting px-2 py-0.5 rounded font-bold text-[10px]">Bekliyor</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

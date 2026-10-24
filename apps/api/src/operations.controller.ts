@@ -18,6 +18,7 @@ import {
   SupervisorAudit,
   SurveyFeedback,
 } from './entities';
+import { evaluateDailySchedule } from './restrooms.controller';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -49,7 +50,7 @@ export class ReportsController {
       this.auditTrail.find({ order: { createdAt: 'DESC' }, take: 50 }),
     ]);
 
-    // 1. Temizlik KPI'ları
+    // 1. Temizlik KPI'ları ve Kaçırılan (MISSED) Slot Tespiti
     const totalCleans = cleanings.length;
     let onTimeCount = 0;
     let outOfTimeCount = 0;
@@ -107,7 +108,10 @@ export class ReportsController {
       .map(([issue, count]) => ({ issue, count }))
       .sort((a, b) => b.count - a.count);
 
-    // 6. Canlı Mahal Operasyon Matrisi
+    // 6. Canlı Mahal Operasyon Matrisi ve Kaçırılan (MISSED) Slotlar
+    let totalPlannedSlotsToday = 0;
+    let totalMissedSlotsToday = 0;
+
     const locationMatrix = locations.map((loc) => {
       const locCleanings = cleanings.filter((c) => c.locationId === loc.id);
       const lastClean = locCleanings.length > 0 ? locCleanings[0] : null;
@@ -119,6 +123,15 @@ export class ReportsController {
         (i) => i.locationId === loc.id && i.status !== 'VERIFIED_CLOSED',
       );
 
+      const dailySchedule = evaluateDailySchedule(
+        loc.schedule || [],
+        locCleanings,
+        loc.toleranceMinutes,
+      );
+
+      totalPlannedSlotsToday += (loc.schedule || []).length;
+      totalMissedSlotsToday += dailySchedule.missedCount;
+
       return {
         id: loc.id,
         code: loc.code,
@@ -127,6 +140,8 @@ export class ReportsController {
         backupSupervisor: loc.backupSupervisorName || 'Ayşe Şef',
         slotCount: loc.schedule ? loc.schedule.length : 0,
         toleranceMinutes: loc.toleranceMinutes,
+        missedCount: dailySchedule.missedCount,
+        dailySchedule: dailySchedule.slots,
         lastClean: lastClean ? `${lastClean.actualTime} (${lastClean.staffName})` : null,
         lastAudit: lastAudit
           ? `${lastAudit.createdAt.toTimeString().substring(0, 5)} (${lastAudit.isApproved ? '✓ Onay' : '✗ Uygunsuzluk'})`
@@ -139,6 +154,12 @@ export class ReportsController {
       };
     });
 
+    // Gerçek SLA Uyum Oranı: Kaçırılan slotları da hesaba katan kesin operasyonel oran
+    const complianceRate =
+      totalPlannedSlotsToday > 0
+        ? Math.max(0, Math.round(((totalPlannedSlotsToday - totalMissedSlotsToday) / totalPlannedSlotsToday) * 100))
+        : 100;
+
     return {
       kpis: {
         totalCleans,
@@ -147,6 +168,9 @@ export class ReportsController {
         outOfTimeRate,
         notDoneCount,
         notDoneRate,
+        missedSlotCount: totalMissedSlotsToday,
+        totalPlannedSlotsToday,
+        complianceRate,
         totalSurveys,
         csatRate,
         avgMTTR,

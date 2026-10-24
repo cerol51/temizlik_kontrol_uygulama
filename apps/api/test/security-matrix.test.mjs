@@ -1,7 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const API = 'http://localhost:3000/api';
+
+let serverProcess = null;
+
+async function ensureServerRunning() {
+  try {
+    const res = await fetch(`${API}/health`);
+    if (res.ok) return;
+  } catch {}
+
+  serverProcess = spawn('node', ['dist/main.js'], {
+    cwd: resolve(__dirname, '..'),
+    stdio: 'ignore',
+    env: { ...process.env, ALLOW_IN_MEMORY_DB: 'true' },
+  });
+
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    try {
+      const res = await fetch(`${API}/health`);
+      if (res.ok) return;
+    } catch {}
+  }
+}
 
 async function post(path, body, token) {
   const headers = { 'Content-Type': 'application/json' };
@@ -32,6 +59,14 @@ async function del(path, token) {
 }
 
 test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
+  await ensureServerRunning();
+
+  t.after(() => {
+    if (serverProcess) {
+      serverProcess.kill('SIGTERM');
+    }
+  });
+
   let adminToken = '';
   let supervisorToken = '';
   let employeeToken = '';
@@ -228,6 +263,42 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     const earlyResult = evaluateSLA(schedule, '09:30', 15);
     assert.equal(earlyResult.status, 'EARLY');
     assert.equal(earlyResult.badgeClass, 'badge-outoftime');
+  });
+
+  await t.test('12. P1-3: Yapılmayan Temizliklerin (MISSED) Otomatik Tespiti ve Zaman Çizelgesi Eşleştirmesi', async () => {
+    const { evaluateDailySchedule } = await import('../dist/restrooms.controller.js');
+    const schedule = ['08:00', '10:00', '12:00', '14:00'];
+    const dummyCleanings = [
+      {
+        plannedSlot: '08:00',
+        actualTime: '08:05',
+        staffName: 'Ahmet Yılmaz',
+      },
+    ];
+
+    // Simülasyon saati: 11:30 (10:00 slotu toleransı (+15 dk -> 10:15) aşmıştır, 12:00 ve 14:00 ise henüz gelmemiştir)
+    const result = evaluateDailySchedule(schedule, dummyCleanings, 15, '11:30');
+
+    assert.equal(result.slots.length, 4);
+
+    // 08:00 slotu temizlendi -> ON_TIME
+    assert.equal(result.slots[0].slot, '08:00');
+    assert.equal(result.slots[0].status, 'ON_TIME');
+    assert.equal(result.slots[0].staffName, 'Ahmet Yılmaz');
+
+    // 10:00 slotu yapılmadı ve tolerans aşıldı -> MISSED
+    assert.equal(result.slots[1].slot, '10:00');
+    assert.equal(result.slots[1].status, 'MISSED');
+    assert.equal(result.slots[1].badgeClass, 'badge-notdone');
+
+    // 12:00 slotu henüz gelmedi -> WAITING
+    assert.equal(result.slots[2].slot, '12:00');
+    assert.equal(result.slots[2].status, 'WAITING');
+
+    // Sayım doğrulamaları
+    assert.equal(result.missedCount, 1, 'Kaçırılan slot sayısı 1 olmalı');
+    assert.equal(result.onTimeCount, 1, 'Zamanında slot sayısı 1 olmalı');
+    assert.equal(result.pendingCount, 2, 'Bekleyen slot sayısı 2 olmalı');
   });
 });
 
