@@ -1,5 +1,5 @@
 import React from 'react';
-import { Incident, Location, DashboardData, SupervisorLocationStatus } from '../../api';
+import { AppUser, Incident, Location, DashboardData, SupervisorLocationStatus } from '../../api';
 
 interface SupervisorViewProps {
   locations: Location[];
@@ -7,6 +7,7 @@ interface SupervisorViewProps {
   allIncidents: Incident[];
   dashboard: DashboardData | null;
   supervisorStatus: SupervisorLocationStatus | null;
+  staffList?: AppUser[];
   selectedId: string;
   setSelectedId: (id: string) => void;
   incidentFilterLoc: string;
@@ -23,6 +24,7 @@ interface SupervisorViewProps {
   onOpenAuditModal: () => void;
   onOpenScheduleModal: () => void;
   onOpenPastModal: () => void;
+  onOpenPlannerModal?: () => void;
 }
 
 export const SupervisorView: React.FC<SupervisorViewProps> = ({
@@ -31,6 +33,7 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({
   allIncidents,
   dashboard,
   supervisorStatus,
+  staffList = [],
   selectedId,
   setSelectedId,
   incidentFilterLoc,
@@ -47,7 +50,12 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({
   onOpenAuditModal,
   onOpenScheduleModal,
   onOpenPastModal,
+  onOpenPlannerModal,
 }) => {
+  const effectiveStaffOptions =
+    staffList.length > 0
+      ? staffList.map((u) => u.fullName || u.username)
+      : ['Ahmet Temizlik', 'Mehmet Hijyen'];
   const effectiveIncidents =
     allIncidents.length > 0
       ? allIncidents
@@ -222,19 +230,20 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({
                   </p>
 
                   {/* Durum: AÇIK ŞİKAYET - PERSONELE ATA */}
-                  {inc.status === 'OPEN' && (
+                  {(inc.status === 'OPEN' || inc.status === 'ESCALATED') && (
                     <div className="flex items-center gap-2 pt-1 border-t border-rose-200">
                       <select
-                        value={assigneeMap[inc.id] || 'Ahmet Temizlik'}
+                        value={assigneeMap[inc.id] || effectiveStaffOptions[0]}
                         onChange={(e) =>
                           setAssigneeMap({ ...assigneeMap, [inc.id]: e.target.value })
                         }
                         className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs font-semibold outline-none focus:ring-1 focus:ring-purple-500"
                       >
-                        <option value="Ahmet Temizlik">Ahmet Temizlik (Görevli Personel)</option>
-                        <option value="Mehmet Hijyen">Mehmet Hijyen</option>
-                        <option value="Ayşe Kaya">Ayşe Kaya</option>
-                        <option value="Fatma Çelik">Fatma Çelik</option>
+                        {effectiveStaffOptions.map((staffName) => (
+                          <option key={staffName} value={staffName}>
+                            {staffName} (Görevli Personel)
+                          </option>
+                        ))}
                       </select>
                       <button
                         onClick={async () => {
@@ -404,6 +413,18 @@ export const SupervisorView: React.FC<SupervisorViewProps> = ({
             </span>
             <i className="fa-solid fa-chevron-right text-slate-400 group-hover:translate-x-1 transition"></i>
           </button>
+
+          {/* Vardiya & Tolerans Planlayıcı Butonu */}
+          {onOpenPlannerModal && (
+            <button
+              type="button"
+              onClick={onOpenPlannerModal}
+              className="w-full bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-900 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition"
+            >
+              <i className="fa-solid fa-sliders text-purple-700"></i>
+              Vardiya Saat Planını ve SLA Toleransını Düzenle
+            </button>
+          )}
         </div>
       </div>
     </div>

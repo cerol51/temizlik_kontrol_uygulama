@@ -110,6 +110,9 @@ export async function fetchLocationsApi(): Promise<Location[]> {
 }
 
 export async function fetchPublicStatusApi(tokenOrId: string): Promise<PublicLocationStatus> {
+  if (tokenOrId.startsWith('token-')) {
+    return apiRequest<PublicLocationStatus>(`/q/${tokenOrId}`);
+  }
   return apiRequest<PublicLocationStatus>(`/locations/${tokenOrId}/public`);
 }
 
@@ -194,6 +197,7 @@ export async function verifyAndCloseIncidentApi(
 export async function createCleaningApi(
   data: {
     locationId: string;
+    locationToken?: string;
     staffName: string;
     items?: string[];
     note?: string;
@@ -205,6 +209,7 @@ export async function createCleaningApi(
     body: JSON.stringify({
       tasksConfirmed: true,
       note: data.note || 'Rutin temizlik tamamlandı.',
+      locationToken: data.locationToken,
     }),
   });
 }
@@ -216,6 +221,7 @@ export async function createAuditApi(
     isApproved: boolean;
     checklist: Array<{ id: number; label: string; isOk: boolean }>;
     note?: string;
+    templateVersion?: string;
   },
   token: string,
 ): Promise<any> {
@@ -225,13 +231,13 @@ export async function createAuditApi(
       isApproved: data.isApproved,
       checklist: data.checklist,
       note: data.note?.trim() || (data.isApproved ? 'Eksiksiz onaylandı.' : 'Uygunsuzluk tespit edildi.'),
-      templateVersion: 'v1.2',
+      templateVersion: data.templateVersion || 'v1.2',
     }),
   });
 }
 
 export async function fetchStaffUsersApi(token: string): Promise<AppUser[]> {
-  const users = await apiRequest<AppUser[]>('/auth/users', token);
+  const users = await apiRequest<AppUser[]>('/auth/users/staff', token);
   return users.filter((u) => u.role === 'employee');
 }
 

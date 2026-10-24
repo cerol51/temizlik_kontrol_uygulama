@@ -188,13 +188,25 @@ export class AuthController {
     return toPublicUser(user);
   }
 
-  // 4. Admin & Şef - Kayıtlı Kullanıcıları Listele
+  // 4. Admin - Kayıtlı Tüm Kullanıcıları Listele
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin', 'supervisor')
+  @Roles('admin')
   @Get('users')
   async listUsers() {
     return this.usersRepo.find({
       order: { createdAt: 'DESC' },
+      select: ['id', 'fullName', 'username', 'role', 'createdAt'],
+    });
+  }
+
+  // 4.5. Şef ve Admin - Görev Atanabilecek Saha Personellerini Listele
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'supervisor')
+  @Get('users/staff')
+  async listStaffUsers() {
+    return this.usersRepo.find({
+      where: { role: 'employee' },
+      order: { fullName: 'ASC' },
       select: ['id', 'fullName', 'username', 'role', 'createdAt'],
     });
   }

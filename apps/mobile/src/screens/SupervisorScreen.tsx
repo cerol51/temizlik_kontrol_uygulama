@@ -79,6 +79,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
   // Dynamic checklist criteria from database
   const [checklistCriteria, setChecklistCriteria] = useState<string[]>(DEFAULT_CHECKLIST_CRITERIA);
+  const [checklistVersion, setChecklistVersion] = useState<string>('v1.2');
 
   // Audit state
   const [auditAnswers, setAuditAnswers] = useState<Record<number, boolean>>(() => {
@@ -93,9 +94,12 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    loadAllData();
+    void loadAllData();
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
-      // Arka plan otomatik senkronizasyon (3.5 saniye)
+      // Arka plan otomatik senkronizasyon (5 saniye)
       Promise.all([
         fetchAllIncidentsApi(token),
         selectedLocation ? fetchSupervisorStatusApi(selectedLocation.id, token).catch(() => null) : null,
@@ -103,9 +107,9 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
         if (incs) setAllIncidents(incs);
         if (status) setSupStatus(status);
       }).catch(() => {});
-    }, 3500);
+    }, 5000);
     return () => clearInterval(interval);
-  }, [selectedLocation?.id]);
+  }, [selectedLocation?.id, token]);
 
   async function loadAllData() {
     try {
@@ -120,6 +124,10 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       setAllIncidents(incs);
       if (clData?.items && clData.items.length > 0) {
         setChecklistCriteria(clData.items);
+        if (clData.versionTag) setChecklistVersion(clData.versionTag);
+        const initAns: Record<number, boolean> = {};
+        clData.items.forEach((_, idx) => (initAns[idx] = true));
+        setAuditAnswers(initAns);
       }
       const combinedStaff = users.length > 0 ? users : DEFAULT_STAFF_USERS;
       setStaffUsers(combinedStaff);
@@ -216,6 +224,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
           isApproved,
           checklist: formattedChecklist,
           note: auditNote.trim() || undefined,
+          templateVersion: checklistVersion,
         },
         token,
       );
@@ -574,7 +583,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
             <View style={styles.bigBtnTexts}>
               <Text style={styles.bigBtnTitle}>Denetim Yap</Text>
               <Text style={styles.bigBtnDesc}>
-                10 maddelik standart denetimi uygula (uygunsuzluklar otomatik atanır)
+                {checklistCriteria.length} maddelik standart denetimi uygula (uygunsuzluklar otomatik atanır)
               </Text>
             </View>
             <Text style={styles.bigBtnArrow}>➔</Text>

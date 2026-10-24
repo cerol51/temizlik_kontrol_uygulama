@@ -6,6 +6,7 @@ interface LocationManagementProps {
   busy?: boolean;
   onOpenCreateLocation: () => void;
   onOpenSticker: (loc: Location) => void;
+  onOpenPlanner?: (loc: Location) => void;
   onRegenerateToken: (loc: Location) => void;
   onDeleteLocation: (loc: Location) => void;
 }
@@ -15,6 +16,7 @@ export const LocationManagement: React.FC<LocationManagementProps> = ({
   busy = false,
   onOpenCreateLocation,
   onOpenSticker,
+  onOpenPlanner,
   onRegenerateToken,
   onDeleteLocation,
 }) => {
@@ -94,6 +96,15 @@ export const LocationManagement: React.FC<LocationManagementProps> = ({
                   </code>
                 </td>
                 <td className="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
+                  {onOpenPlanner && (
+                    <button
+                      onClick={() => onOpenPlanner(loc)}
+                      className="bg-purple-100 hover:bg-purple-200 text-purple-900 font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 transition"
+                      title="Temizlik Saat Planını ve Toleransı Düzenle"
+                    >
+                      <i className="fa-solid fa-sliders text-purple-700"></i> Saat Planı
+                    </button>
+                  )}
                   <button
                     onClick={() => onOpenSticker(loc)}
                     className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2 py-1 rounded text-[11px] inline-flex items-center gap-1 shadow-sm transition"

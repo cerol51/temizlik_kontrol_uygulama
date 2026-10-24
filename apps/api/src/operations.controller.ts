@@ -112,8 +112,12 @@ export class ReportsController {
     let totalPlannedSlotsToday = 0;
     let totalMissedSlotsToday = 0;
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const locationMatrix = locations.map((loc) => {
       const locCleanings = cleanings.filter((c) => c.locationId === loc.id);
+      const todayLocCleanings = locCleanings.filter((c) => new Date(c.createdAt) >= startOfToday);
       const lastClean = locCleanings.length > 0 ? locCleanings[0] : null;
 
       const locAudits = audits.filter((a) => a.locationId === loc.id);
@@ -125,7 +129,7 @@ export class ReportsController {
 
       const dailySchedule = evaluateDailySchedule(
         loc.schedule || [],
-        locCleanings,
+        todayLocCleanings,
         loc.toleranceMinutes,
       );
 

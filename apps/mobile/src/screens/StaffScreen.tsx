@@ -67,12 +67,15 @@ export function StaffScreen({ user, token, onLogout }: Props) {
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
 
   useEffect(() => {
-    loadInitialData();
+    void loadInitialData();
+  }, []);
+
+  useEffect(() => {
     const interval = setInterval(() => {
-      refreshLocationData();
-    }, 3500);
+      void refreshLocationData();
+    }, 5000);
     return () => clearInterval(interval);
-  }, [selectedLocation?.id]);
+  }, [selectedLocation?.id, token]);
 
   async function loadInitialData() {
     try {
@@ -169,6 +172,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
       await createCleaningApi(
         {
           locationId: selectedLocation.id,
+          locationToken: selectedLocation.token,
           staffName: user.fullName || user.username,
           items: CLEANING_CHECKLIST_ITEMS,
           note: cleaningNote.trim() || undefined,

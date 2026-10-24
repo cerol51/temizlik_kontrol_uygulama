@@ -9,7 +9,9 @@ import {
   DashboardData,
   deleteLocation,
   deleteUserApi,
+  downloadAuditCsvApi,
   fetchActiveChecklistApi,
+  fetchStaffUsersApi,
   fetchUsersApi,
   Incident,
   Location,
@@ -140,6 +142,7 @@ export default function App() {
 
   // Şef state
   const [checklistItems, setChecklistItems] = useState<string[]>([...DEFAULT_CHECKLIST_ITEMS]);
+  const [checklistVersion, setChecklistVersion] = useState<string>('v1.2');
   const [checklistAnswers, setChecklistAnswers] = useState<Record<number, boolean>>({
     0: true,
     1: true,
@@ -201,13 +204,20 @@ export default function App() {
     fetchActiveChecklistApi()
       .then((res) => {
         if (res?.items && res.items.length > 0) {
-          const labels = res.items.map((i) => i.label);
-          setChecklistItems(labels);
-          const initialAns: Record<number, boolean> = {};
-          labels.forEach((_, idx) => {
-            initialAns[idx] = true;
-          });
-          setChecklistAnswers(initialAns);
+          const labels = res.items
+            .map((i) => (typeof i === 'string' ? i : i.label))
+            .filter(Boolean);
+          if (labels.length > 0) {
+            setChecklistItems(labels);
+            if (res.versionTag || res.template?.version) {
+              setChecklistVersion(res.versionTag || res.template?.version || 'v1.2');
+            }
+            const initialAns: Record<number, boolean> = {};
+            labels.forEach((_, idx) => {
+              initialAns[idx] = true;
+            });
+            setChecklistAnswers(initialAns);
+          }
         }
       })
       .catch(() => {
@@ -333,7 +343,7 @@ export default function App() {
   }, [accessToken]);
 
   useEffect(() => {
-    if (activeTab === 'supervisor' || activeTab === 'employee' || activeTab === 'admin' || role === 'supervisor' || role === 'employee' || role === 'admin') {
+    if (role === 'supervisor' || role === 'admin') {
       void loadDashboard();
       void loadIncidents();
       const interval = setInterval(() => {
@@ -341,8 +351,14 @@ export default function App() {
         void loadIncidents();
       }, 10000);
       return () => clearInterval(interval);
+    } else if (role === 'employee') {
+      void loadIncidents();
+      const interval = setInterval(() => {
+        void loadIncidents();
+      }, 10000);
+      return () => clearInterval(interval);
     }
-  }, [activeTab, role, loadDashboard, loadIncidents]);
+  }, [role, loadDashboard, loadIncidents]);
 
   // Rol İzolasyonu
   useEffect(() => {
@@ -586,7 +602,9 @@ export default function App() {
 
   // Şef Olay Görevlendirme
   const handleDispatch = async (incidentId: string) => {
-    const staffName = assigneeMap[incidentId] || 'Ahmet Yılmaz';
+    const defaultStaff =
+      usersList.find((u) => u.role === 'employee')?.fullName || 'Ahmet Temizlik';
+    const staffName = assigneeMap[incidentId] || defaultStaff;
     try {
       setBusy(true);
       const token = await accessToken();
@@ -645,7 +663,7 @@ export default function App() {
             isApproved: effectiveIsApproved,
             checklist: formattedChecklist,
             note: auditNote,
-            templateVersion: 'v1.2',
+            templateVersion: checklistVersion,
           }),
         },
       );
@@ -830,18 +848,43 @@ export default function App() {
   const loadUsers = useCallback(async () => {
     try {
       const token = await accessToken();
-      const list = await fetchUsersApi(token);
+      const list =
+        role === 'admin'
+          ? await fetchUsersApi(token)
+          : await fetchStaffUsersApi(token);
       setUsersList(list);
     } catch (err) {
       console.warn('Kullanıcı listesi yüklenemedi:', err);
     }
-  }, [accessToken]);
+  }, [accessToken, role]);
 
   useEffect(() => {
-    if (activeTab === 'admin' || activeTab === 'supervisor' || role === 'admin' || role === 'supervisor') {
+    if (role === 'admin' || role === 'supervisor') {
       void loadUsers();
     }
-  }, [activeTab, role, loadUsers]);
+  }, [role, loadUsers]);
+
+  const handleOpenPlanner = (loc?: Location) => {
+    const target = loc || locations.find((l) => l.id === selectedId) || locations[0];
+    if (!target) return;
+    setSelectedId(target.id);
+    setWorkingSchedule([...(target.schedule || ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'])]);
+    setWorkingTolerance(target.toleranceMinutes || 15);
+    setPlannerOpen(true);
+  };
+
+  const handleDownloadCsv = async () => {
+    try {
+      setBusy(true);
+      const token = await accessToken();
+      await downloadAuditCsvApi(token);
+      setNotice({ text: 'Denetim izi CSV raporu başarıyla indirildi.' });
+    } catch (err: any) {
+      setNotice({ text: err.message, bad: true });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleAdminCreateUser = async (user: {
     fullName: string;
@@ -889,14 +932,18 @@ export default function App() {
     code?: string;
     building?: string;
     toleranceMinutes?: number;
+    schedule?: string[];
     schedulePreset?: string;
     currentSupervisorName?: string;
     backupSupervisorName?: string;
   }) => {
-    let schedule = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-    if (locData.schedulePreset === '1hour') {
+    let schedule =
+      locData.schedule && locData.schedule.length > 0
+        ? locData.schedule
+        : ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
+    if (!locData.schedule && locData.schedulePreset === '1hour') {
       schedule = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
-    } else if (locData.schedulePreset === '3shift') {
+    } else if (!locData.schedule && locData.schedulePreset === '3shift') {
       schedule = ['09:00', '14:00', '19:00'];
     }
 
@@ -1035,6 +1082,7 @@ export default function App() {
             allIncidents={allIncidents}
             dashboard={dashboard}
             supervisorStatus={supervisorStatus}
+            staffList={usersList.filter((u) => u.role === 'employee')}
             selectedId={selectedId}
             setSelectedId={setSelectedId}
             incidentFilterLoc={incidentFilterLoc}
@@ -1051,6 +1099,7 @@ export default function App() {
             onOpenAuditModal={() => setSupervisorAuditModalOpen(true)}
             onOpenScheduleModal={() => setStaffScheduleOpen(true)}
             onOpenPastModal={() => setStaffPastOpen(true)}
+            onOpenPlannerModal={() => handleOpenPlanner(curLocation)}
           />
         )}
 
@@ -1063,6 +1112,7 @@ export default function App() {
               setAdminSubTab={setAdminSubTab}
               onOpenCreateLocation={() => setAdminModalOpen(true)}
               onOpenCreateUser={() => setAdminUserModalOpen(true)}
+              onDownloadCsv={handleDownloadCsv}
             />
 
             {adminSubTab === 'overview' && (
@@ -1082,6 +1132,7 @@ export default function App() {
                   setStickerLoc(loc);
                   setPrintStickerModalOpen(true);
                 }}
+                onOpenPlanner={(loc) => handleOpenPlanner(loc)}
                 onRegenerateToken={handleRegenerateToken}
                 onDeleteLocation={handleDeleteLocation}
               />
@@ -1102,7 +1153,10 @@ export default function App() {
             )}
 
             {adminSubTab === 'audit' && (
-              <AuditTrailTable dashboard={dashboard} />
+              <AuditTrailTable
+                dashboard={dashboard}
+                onDownloadCsv={handleDownloadCsv}
+              />
             )}
           </div>
         )}

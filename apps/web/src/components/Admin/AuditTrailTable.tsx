@@ -3,9 +3,10 @@ import { DashboardData } from '../../api';
 
 interface AuditTrailTableProps {
   dashboard: DashboardData | null;
+  onDownloadCsv?: () => void;
 }
 
-export const AuditTrailTable: React.FC<AuditTrailTableProps> = ({ dashboard }) => {
+export const AuditTrailTable: React.FC<AuditTrailTableProps> = ({ dashboard, onDownloadCsv }) => {
   if (!dashboard) return null;
 
   return (
@@ -14,14 +15,13 @@ export const AuditTrailTable: React.FC<AuditTrailTableProps> = ({ dashboard }) =
         <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
           <i className="fa-solid fa-clock-rotate-left text-slate-500"></i> Sistem Güvenlik ve Denetim İzi (Audit Trail)
         </h3>
-        <a
-          href="/api/reports/export-csv"
-          target="_blank"
-          rel="noreferrer"
+        <button
+          type="button"
+          onClick={onDownloadCsv}
           className="bg-slate-800 hover:bg-slate-900 text-white font-medium px-2.5 py-1 rounded text-[11px] flex items-center gap-1 shadow-sm"
         >
           <i className="fa-solid fa-file-csv text-emerald-400"></i> Tüm Logları CSV İndir
-        </a>
+        </button>
       </div>
       <table className="w-full text-xs text-left">
         <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">

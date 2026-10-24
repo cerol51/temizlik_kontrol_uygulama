@@ -7,6 +7,7 @@ interface AdminHeaderProps {
   setAdminSubTab: (tab: 'overview' | 'locations' | 'users' | 'matrix' | 'audit') => void;
   onOpenCreateLocation: () => void;
   onOpenCreateUser: () => void;
+  onDownloadCsv?: () => void;
 }
 
 export const AdminHeader: React.FC<AdminHeaderProps> = ({
@@ -15,6 +16,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   setAdminSubTab,
   onOpenCreateLocation,
   onOpenCreateUser,
+  onDownloadCsv,
 }) => {
   return (
     <>
@@ -54,14 +56,13 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
           >
             <i className="fa-solid fa-user-plus"></i> Yeni Kullanıcı
           </button>
-          <a
-            href="/api/reports/export-csv"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={onDownloadCsv}
             className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow transition"
           >
             <i className="fa-solid fa-file-csv"></i> CSV İndir
-          </a>
+          </button>
         </div>
       </div>
 

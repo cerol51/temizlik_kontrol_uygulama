@@ -51,7 +51,24 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
       const locs = await fetchLocationsApi();
       setLocations(locs);
       if (locs.length > 0 && !selectedLocation) {
-        setSelectedLocation(locs[0]);
+        let initialLoc = locs[0];
+        if (typeof window !== 'undefined' && window.location) {
+          const params = new URLSearchParams(window.location.search);
+          const qToken =
+            params.get('q') ||
+            (window.location.pathname.startsWith('/q/')
+              ? window.location.pathname.split('/q/')[1]?.split('?')[0]
+              : null);
+          const wcId = params.get('wc');
+          if (qToken) {
+            const matched = locs.find((l) => l.token === qToken);
+            if (matched) initialLoc = matched;
+          } else if (wcId) {
+            const matched = locs.find((l) => l.id === wcId);
+            if (matched) initialLoc = matched;
+          }
+        }
+        setSelectedLocation(initialLoc);
       }
     } catch (err: any) {
       showAlert('Bağlantı Hatası', err?.message || 'Lokasyonlar yüklenemedi.');
@@ -62,7 +79,7 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
 
   async function loadPublicStatus(loc: Location) {
     try {
-      const data = await fetchPublicStatusApi(loc.token || loc.id);
+      const data = await fetchPublicStatusApi(loc.id);
       setPublicStatus(data);
       setStatusModalOpen(true);
     } catch (err: any) {

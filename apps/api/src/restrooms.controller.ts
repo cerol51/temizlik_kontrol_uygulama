@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Request } from 'express';
 import { Repository } from 'typeorm';
 import { AuthenticatedUser, JwtAuthGuard, Public, Roles, RolesGuard } from './auth';
@@ -294,7 +294,7 @@ export class RestroomsController implements OnModuleDestroy {
     const location = await this.locations.findOne({ where: { token } });
     if (!location) throw new NotFoundException('Geçersiz veya iptal edilmiş QR kod.');
 
-    const [lastCleaning, todayLogs] = await Promise.all([
+    const [lastCleaning, recentLogs] = await Promise.all([
       this.cleanings.findOne({
         where: { locationId: location.id },
         order: { createdAt: 'DESC' },
@@ -302,9 +302,13 @@ export class RestroomsController implements OnModuleDestroy {
       this.cleanings.find({
         where: { locationId: location.id },
         order: { createdAt: 'ASC' },
-        take: 20,
+        take: 50,
       }),
     ]);
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayLogs = recentLogs.filter((log) => new Date(log.createdAt) >= startOfToday);
 
     // KVKK Uyarınca: Ziyaretçiye çalışan adı veya şef denetim detayı sızdırılmaz
     return {
@@ -330,7 +334,7 @@ export class RestroomsController implements OnModuleDestroy {
   @Public()
   async publicStatus(@Param('id') id: string) {
     const location = await this.requireLocation(id);
-    const [lastCleaning, todayLogs] = await Promise.all([
+    const [lastCleaning, recentLogs] = await Promise.all([
       this.cleanings.findOne({
         where: { locationId: location.id },
         order: { createdAt: 'DESC' },
@@ -338,9 +342,13 @@ export class RestroomsController implements OnModuleDestroy {
       this.cleanings.find({
         where: { locationId: location.id },
         order: { createdAt: 'ASC' },
-        take: 20,
+        take: 50,
       }),
     ]);
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayLogs = recentLogs.filter((log) => new Date(log.createdAt) >= startOfToday);
 
     return {
       location: {
@@ -634,14 +642,24 @@ export class RestroomsController implements OnModuleDestroy {
     });
 
     if (ratingStr === 'bad') {
-      // 15 Dakikalık Korelasyon Kontrolü: Açık bir incident var mı?
-      const openIncident = await this.incidents.findOne({
+      // 15 Dakikalık Korelasyon Kontrolü: Son 15 dk içinde açılmış veya halen OPEN/ESCALATED olan incident var mı?
+      const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
+      const candidateIncident = await this.incidents.findOne({
         where: [
           { locationId: location.id, status: 'OPEN' },
           { locationId: location.id, status: 'DISPATCHED' },
           { locationId: location.id, status: 'ESCALATED' },
         ],
+        order: { createdAt: 'DESC' },
       });
+
+      const openIncident =
+        candidateIncident &&
+        (candidateIncident.status === 'OPEN' ||
+          candidateIncident.status === 'ESCALATED' ||
+          new Date(candidateIncident.createdAt) >= fifteenMinAgo)
+          ? candidateIncident
+          : null;
 
       if (openIncident) {
         // Mevcut açık olayın sinyal sayısını artır ve yeni sorunları birleştir
@@ -720,7 +738,7 @@ export class RestroomsController implements OnModuleDestroy {
   // 4. Şef Olay Görevlendirme (Dispatch)
   @Post('incidents/:id/dispatch')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor')
+  @Roles('supervisor', 'admin')
   async dispatchIncident(
     @Param('id') incidentId: string,
     @Body() body: DispatchIncidentDto,
@@ -728,6 +746,9 @@ export class RestroomsController implements OnModuleDestroy {
   ) {
     const incident = await this.incidents.findOne({ where: { id: incidentId } });
     if (!incident) throw new NotFoundException('Olay kaydı bulunamadı.');
+    if (incident.status === 'VERIFIED_CLOSED') {
+      throw new BadRequestException('Kapatılmış (VERIFIED_CLOSED) bir olay tekrar atanamaz.');
+    }
 
     incident.status = 'DISPATCHED';
     incident.assignedStaffName = body.assignedStaffName;
@@ -755,6 +776,9 @@ export class RestroomsController implements OnModuleDestroy {
   ) {
     const incident = await this.incidents.findOne({ where: { id: incidentId } });
     if (!incident) throw new NotFoundException('Olay kaydı bulunamadı.');
+    if (incident.status === 'VERIFIED_CLOSED') {
+      throw new BadRequestException('Kapatılmış (VERIFIED_CLOSED) bir olay üzerinde işlem yapılamaz.');
+    }
 
     const currentTime = getCurrentTimeStr();
     incident.status = 'RESOLVED_BY_STAFF';
@@ -762,7 +786,7 @@ export class RestroomsController implements OnModuleDestroy {
     incident.resolvedAtUtc = new Date();
     incident.resolutionNote = body.note || 'Sarf malzemeleri ikmal edildi, dezenfeksiyon yapıldı.';
     if (body.photoUrl) incident.photoUrl = body.photoUrl;
-    if (body.staffName) incident.assignedStaffName = body.staffName;
+    incident.assignedStaffName = body.staffName || incident.assignedStaffName || user.name || 'Personel';
 
     await this.incidents.save(incident);
 
@@ -779,7 +803,7 @@ export class RestroomsController implements OnModuleDestroy {
   // 6. Şef Doğrulama ve Kapatma (Verify & Close)
   @Post('incidents/:id/verify-close')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor')
+  @Roles('supervisor', 'admin')
   async verifyAndClose(
     @Param('id') incidentId: string,
     @Body() body: VerifyCloseIncidentDto,
@@ -787,8 +811,15 @@ export class RestroomsController implements OnModuleDestroy {
   ) {
     const incident = await this.incidents.findOne({ where: { id: incidentId } });
     if (!incident) throw new NotFoundException('Olay kaydı bulunamadı.');
+    if (incident.status === 'VERIFIED_CLOSED') {
+      throw new BadRequestException('Bu olay zaten doğrulanarak kapatılmış.');
+    }
 
     incident.status = 'VERIFIED_CLOSED';
+    if (!incident.resolvedAtUtc) {
+      incident.resolvedAtUtc = new Date();
+      incident.resolvedAt = getCurrentTimeStr();
+    }
     if (body.note) incident.resolutionNote = body.note;
     await this.incidents.save(incident);
 
@@ -805,7 +836,7 @@ export class RestroomsController implements OnModuleDestroy {
   // 7. Plan ve Tolerans Güncelleme
   @Put('locations/:id/schedule')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('supervisor')
+  @Roles('supervisor', 'admin')
   async updateSchedule(
     @Param('id') locationId: string,
     @Body() body: UpdateScheduleDto,
@@ -835,7 +866,7 @@ export class RestroomsController implements OnModuleDestroy {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const id = randomUUID();
-    const token = 'token-wc-' + Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 6);
+    const token = `token-wc-${randomBytes(8).toString('hex')}`;
     const code = body.code?.trim() || `PRJ-A-WC-${Math.floor(100 + Math.random() * 900)}`;
 
     const location = await this.locations.save({
@@ -906,7 +937,7 @@ export class RestroomsController implements OnModuleDestroy {
   ) {
     const location = await this.requireLocation(id);
     const oldToken = location.token;
-    const newToken = 'token-wc-' + Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 6);
+    const newToken = `token-wc-${randomBytes(8).toString('hex')}`;
     location.token = newToken;
     await this.locations.save(location);
 

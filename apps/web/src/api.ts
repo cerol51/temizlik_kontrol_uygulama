@@ -266,6 +266,10 @@ export async function fetchUsersApi(token?: string): Promise<AppUser[]> {
   return api<AppUser[]>('/auth/users', token);
 }
 
+export async function fetchStaffUsersApi(token?: string): Promise<AppUser[]> {
+  return api<AppUser[]>('/auth/users/staff', token);
+}
+
 export async function createUserApi(
   data: { fullName: string; username: string; password: string; role?: string },
   token?: string,
@@ -283,22 +287,48 @@ export async function deleteUserApi(id: string, token?: string): Promise<{ succe
 }
 
 export interface ActiveChecklist {
-  template: {
+  id?: string;
+  versionTag?: string;
+  title?: string;
+  template?: {
     id: string;
     version: string;
     title: string;
     isActive: boolean;
   };
-  items: Array<{
-    id: string;
-    label: string;
-    orderNum: number;
-    weight: number;
-  }>;
+  items: Array<
+    | string
+    | {
+        id: string;
+        label: string;
+        orderNum: number;
+        weight: number;
+      }
+  >;
 }
 
 export async function fetchActiveChecklistApi(): Promise<ActiveChecklist> {
   return api<ActiveChecklist>('/checklists/active');
+}
+
+export async function downloadAuditCsvApi(token?: string): Promise<void> {
+  const response = await fetch('/api/reports/export-csv', {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`CSV raporu indirilemedi (${response.status}).`);
+  }
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `WC_Denetim_Izleme_Raporu_${new Date().toISOString().substring(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 

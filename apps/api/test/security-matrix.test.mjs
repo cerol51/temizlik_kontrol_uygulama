@@ -115,9 +115,14 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.equal(shortRes.status, 400);
   });
 
-  await t.test('4. P0-2: Şef kullanıcısı kullanıcı yönetimini çağıramaz (403 Forbidden)', async () => {
+  await t.test('4. P0-2: Şef kullanıcısı kullanıcı yönetimini çağıramaz (403 Forbidden), ancak saha personel listesini (/auth/users/staff) görebilir', async () => {
     const listRes = await get('/auth/users', supervisorToken);
     assert.equal(listRes.status, 403);
+
+    const staffListRes = await get('/auth/users/staff', supervisorToken);
+    assert.equal(staffListRes.status, 200);
+    assert.ok(Array.isArray(staffListRes.data));
+    assert.ok(staffListRes.data.every((u) => u.role === 'employee'));
 
     const createRes = await post(
       '/auth/users',
