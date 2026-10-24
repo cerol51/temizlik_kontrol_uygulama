@@ -9,6 +9,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -447,28 +448,73 @@ export class RestroomsController implements OnModuleDestroy {
       note: body.note?.trim() || (body.isApproved ? 'Eksiksiz onaylandı.' : 'Uygunsuzluk tespit edildi.'),
     });
 
-    // Eğer denetim onaylanmazsa (Uygunsuzluk), sistem OTOMATİK düzeltici olay üretir
+    // Eğer denetim onaylanmazsa (Uygunsuzluk), sistem OTOMATİK düzeltici görev açar ve personele iletir
     let correctiveIncident: Incident | null = null;
     if (!body.isApproved) {
+      const DEFAULT_CHECKLIST_LABELS = [
+        'Ayna ve Lavabolar Lekesiz',
+        'Klozet ve Pisuvarlar Hijyenik',
+        'Zemin Kuru ve Temiz',
+        'Sabun / Kağıt Havlu Dolu',
+        'Koku Durumu Ferah',
+        'Çöp Kovası Boş ve Poşetli',
+      ];
+
+      const failedItems: string[] = [];
+      if (Array.isArray(body.checklist)) {
+        body.checklist.forEach((item: any, idx: number) => {
+          if (item && typeof item === 'object') {
+            if (item.isOk === false) {
+              failedItems.push(item.label || DEFAULT_CHECKLIST_LABELS[idx] || `Madde ${item.id || idx + 1}`);
+            }
+          } else if (item === false) {
+            failedItems.push(DEFAULT_CHECKLIST_LABELS[idx] || `Madde ${idx + 1}`);
+          }
+        });
+      } else if (body.checklist && typeof body.checklist === 'object') {
+        Object.entries(body.checklist).forEach(([key, val]) => {
+          if (val === false) {
+            const numKey = Number(key);
+            const label = !isNaN(numKey) && DEFAULT_CHECKLIST_LABELS[numKey]
+              ? DEFAULT_CHECKLIST_LABELS[numKey]
+              : key;
+            failedItems.push(label);
+          }
+        });
+      }
+
+      const issues = failedItems.length > 0
+        ? failedItems.map((f) => `❌ ${f}`)
+        : ['⚠️ Şef Denetimi Uygunsuzluğu: ' + (body.note?.trim() || 'Genel uygunsuzluk')];
+
+      // Mahalin son temizlik personelini veya varsayılan personeli ata
+      const lastCleaning = await this.cleanings.findOne({
+        where: { locationId: location.id },
+        order: { createdAt: 'DESC' },
+      });
+      const assignedStaffName = lastCleaning?.staffName || 'Ahmet Yılmaz';
+
       const incidentId = generateIncidentId();
       correctiveIncident = await this.incidents.save({
         id: incidentId,
         locationId: location.id,
-        status: 'OPEN',
-        issuesJson: ['⚠️ Şef Denetimi Uygunsuzluğu'],
+        status: 'DISPATCHED', // Personele müdahale etmesi için doğrudan iletildi
+        issuesJson: issues,
         signalCount: 1,
+        assignedStaffName,
         currentSupId: location.currentSupervisorId,
         currentSupName: location.currentSupervisorName,
         backupSupId: location.backupSupervisorId,
         backupSupName: location.backupSupervisorName,
         isEscalated: false,
         time: getCurrentTimeStr(),
+        resolutionNote: body.note ? `Şef Notu: ${body.note}` : undefined,
       });
 
       await this.notifications.dispatchIncidentAlert(
         incidentId,
         location.name,
-        ['⚠️ Şef Denetimi Uygunsuzluğu'],
+        issues,
         location.currentSupervisorName || supervisorName,
       );
     }
@@ -479,7 +525,7 @@ export class RestroomsController implements OnModuleDestroy {
       supervisorName,
       body.isApproved
         ? 'Denetim eksiksiz onaylandı.'
-        : `Uygunsuzluk tespit edildi ve düzeltme bileti (${correctiveIncident?.id}) açıldı.`,
+        : `Uygunsuzluk tespit edildi ve düzeltme görevi (${correctiveIncident?.id}) ${correctiveIncident?.assignedStaffName} personeline otomatik iletildi.`,
     );
 
     return { audit, correctiveIncident };
@@ -594,6 +640,31 @@ export class RestroomsController implements OnModuleDestroy {
     }
 
     return { id: survey.id, success: true };
+  }
+
+  // 3.5. Tüm Aktif Olayları / Bildirimleri Getir (Çoklu Mahal Takibi)
+  @Get('incidents')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('supervisor', 'employee', 'admin')
+  async getIncidents(
+    @Query('locationId') locationId?: string,
+    @Query('includeClosed') includeClosed?: string,
+  ) {
+    const qb = this.incidents.createQueryBuilder('i').orderBy('i.createdAt', 'DESC');
+    if (includeClosed !== 'true') {
+      qb.andWhere('i.status != :closed', { closed: 'VERIFIED_CLOSED' });
+    }
+    if (locationId) {
+      qb.andWhere('i.locationId = :locationId', { locationId });
+    }
+    const list = await qb.getMany();
+    const locations = await this.locations.find();
+    const locMap = new Map(locations.map((l) => [l.id, l]));
+    return list.map((inc) => ({
+      ...inc,
+      locationName: locMap.get(inc.locationId)?.name || inc.locationId,
+      locationCode: locMap.get(inc.locationId)?.code || '',
+    }));
   }
 
   // 4. Şef Olay Görevlendirme (Dispatch)

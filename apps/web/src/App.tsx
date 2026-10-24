@@ -130,6 +130,14 @@ export default function App() {
   const [newTimeInput, setNewTimeInput] = useState('09:00');
   const [assigneeMap, setAssigneeMap] = useState<Record<string, string>>({});
 
+  // Personel Rutin Temizlik Modalı
+  const [staffChecklistModalOpen, setStaffChecklistModalOpen] = useState(false);
+
+  // Şef Çoklu Mahal & Olay Takip Filtreleri
+  const [incidentFilterLoc, setIncidentFilterLoc] = useState<string>('all');
+  const [incidentFilterStatus, setIncidentFilterStatus] = useState<string>('all');
+  const [allIncidents, setAllIncidents] = useState<Incident[]>([]);
+
   // Şef Modalleri & Fotoğraf Büyütme
   const [supervisorAuditModalOpen, setSupervisorAuditModalOpen] = useState(false);
   const [viewPhotoUrl, setViewPhotoUrl] = useState<string | null>(null);
@@ -291,24 +299,42 @@ export default function App() {
     void loadStatus();
   }, [loadStatus]);
 
+  // Tüm Mahallerden Olay & Kötü Anket Bildirimlerini Yükleme (Çoklu Mahal Takibi)
+  const loadIncidents = useCallback(async () => {
+    try {
+      const token = await accessToken();
+      const data = await api<Incident[]>('/incidents', token);
+      setAllIncidents(data);
+    } catch (e) {
+      // fallback to dashboard if endpoint not available
+    }
+  }, [accessToken]);
+
   // Yönetim Paneli Yükleme
   const loadDashboard = useCallback(async () => {
     try {
       const token = await accessToken();
       const data = await api<DashboardData>('/reports/dashboard', token);
       setDashboard(data);
+      if (data?.allIncidents && data.allIncidents.length > 0) {
+        setAllIncidents(data.allIncidents);
+      }
     } catch (e) {
       console.warn('Dashboard load error:', e);
     }
   }, [accessToken]);
 
   useEffect(() => {
-    if (activeTab === 'supervisor' || activeTab === 'admin' || role === 'supervisor' || role === 'admin') {
+    if (activeTab === 'supervisor' || activeTab === 'employee' || activeTab === 'admin' || role === 'supervisor' || role === 'employee' || role === 'admin') {
       void loadDashboard();
-      const interval = setInterval(loadDashboard, 15000);
+      void loadIncidents();
+      const interval = setInterval(() => {
+        void loadDashboard();
+        void loadIncidents();
+      }, 10000);
       return () => clearInterval(interval);
     }
-  }, [activeTab, role, loadDashboard]);
+  }, [activeTab, role, loadDashboard, loadIncidents]);
 
   // Rol İzolasyonu: Misafir -> sadece anket, Personel -> sadece personel, Şef -> sadece şef
   useEffect(() => {
@@ -596,22 +622,31 @@ export default function App() {
     try {
       setBusy(true);
       const token = await accessToken();
+      const formattedChecklist = CHECKLIST_ITEMS_V12.map((label, idx) => ({
+        id: idx + 1,
+        label,
+        isOk: checklistAnswers[idx] ?? true,
+      }));
+      const failedItems = formattedChecklist.filter(c => !c.isOk).map(c => c.label);
+      const effectiveIsApproved = isApproved && failedItems.length === 0;
+
       const res = await api<{ correctiveIncident?: Incident }>(
         `/locations/${selectedId}/audits`,
         token,
         {
           method: 'POST',
           body: JSON.stringify({
-            isApproved,
-            checklist: checklistAnswers,
+            isApproved: effectiveIsApproved,
+            checklist: formattedChecklist,
             note: auditNote,
             templateVersion: 'v1.2',
           }),
         },
       );
-      if (!isApproved) {
+      if (!effectiveIsApproved) {
+        const issuesSummary = failedItems.length > 0 ? failedItems.join(', ') : 'Denetim Uygunsuzluğu';
         setNotice({
-          text: `Uygunsuzluk kaydedildi ve otomatik düzeltici iş emri (${res.correctiveIncident?.id}) açıldı!`,
+          text: `Uygunsuzluk kaydedildi! Tespit edilen maddeler (${issuesSummary}) personele müdahale etmesi için otomatik olarak iletildi (${res.correctiveIncident?.id || 'Aktif Görev'})!`,
           bad: true,
         });
       } else {
@@ -620,6 +655,7 @@ export default function App() {
       setAuditNote('');
       void loadStatus();
       void loadDashboard();
+      void loadIncidents();
     } catch (err: any) {
       setNotice({ text: err.message, bad: true });
     } finally {
@@ -1247,7 +1283,7 @@ export default function App() {
                   <div className="mt-4 p-4 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-center">
                     <i className="fa-solid fa-circle-check text-2xl text-emerald-600 mb-1"></i>
                     <p className="font-bold text-sm">Geri Bildiriminiz Alındı!</p>
-                    <p className="text-xs text-emerald-700">Geri bildiriminiz nöbetçi şefimize iletilmiştir.</p>
+                    <p className="text-xs text-emerald-700">Geri bildiriminiz ilgili yöneticiye iletilmiştir.</p>
                   </div>
                 )}
               </div>
@@ -1256,457 +1292,542 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* 2. ROL GÖRÜNÜMÜ: PERSONEL EKRANI                         */}
+        {/* 2. ROL GÖRÜNÜMÜ: PERSONEL MODÜLÜ (SADE & CHECKLIST BUTONLU) */}
         {/* ======================================================== */}
-        {activeTab === 'employee' && (
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
-            {/* Personel Başlığı */}
-            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] uppercase font-bold tracking-wider bg-blue-500/40 px-2 py-0.5 rounded">
-                    Saha Personel Görev Ekranı
+        {activeTab === 'employee' && (() => {
+          const effectiveIncidents = allIncidents.length > 0 ? allIncidents : (dashboard?.allIncidents || supervisorStatus?.activeIncidents || []);
+          const staffAssignedTasks = effectiveIncidents.filter(
+            (inc) => inc.locationId === selectedId && (inc.status === 'DISPATCHED' || inc.status === 'OPEN')
+          );
+
+          return (
+            <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+              {/* Personel Başlığı */}
+              <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white p-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-2xl border border-white/20">
+                      <i className="fa-solid fa-broom text-blue-200"></i>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider bg-blue-500/40 px-2 py-0.5 rounded">
+                        Saha Operasyon
+                      </span>
+                      <h2 className="text-xl font-black mt-0.5">{curLocation?.name}</h2>
+                      <p className="text-xs text-blue-100 font-mono">
+                        {curLocation?.code} — {curLocation?.building}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="font-mono font-bold text-xs bg-black/25 px-2.5 py-1 rounded border border-white/20">
+                    {currentTime.substring(0, 5)}
                   </span>
-                  <h2 className="text-xl font-black mt-1">{curLocation?.name}</h2>
-                  <p className="text-xs text-blue-100 font-mono mt-0.5">
-                    {curLocation?.code} — {curLocation?.building}
-                  </p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-2xl border border-white/20">
-                  <i className="fa-solid fa-broom text-blue-200"></i>
                 </div>
               </div>
-            </div>
 
-            <div className="p-5 space-y-4">
-              {/* KÖTÜ ANKET BİLDİRİMİNDE ŞEFİN ATAMASIYLA İLGİLİ EKRAN */}
-              {activeIncidentForStaff ? (
-                <div className="p-4 bg-amber-50 border-2 border-amber-500 rounded-2xl space-y-3 shadow-md">
-                  <div className="flex items-center justify-between text-amber-950 font-black text-xs">
-                    <span className="flex items-center gap-2">
-                      <i className="fa-solid fa-triangle-exclamation text-rose-600 text-base animate-bounce"></i>
-                      🚨 ŞEF TARAFINDAN ACİL GÖREV ATANDI!
-                    </span>
-                    <span className="bg-amber-200 text-amber-900 px-2 py-0.5 rounded text-[10px] font-bold">
-                      {activeIncidentForStaff.id}
+              <div className="p-5 space-y-4">
+                {/* 1. ŞEFTEN GELEN GÖREVLER & UYGUNSUZLUKLAR (DOĞRU & MERKEZİ TAKİP) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <i className="fa-solid fa-bell text-rose-600 animate-bounce"></i>
+                      Şef Tarafından Atanan Görevler &amp; Bildirimler
+                    </h3>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                      staffAssignedTasks.length > 0
+                        ? 'bg-rose-100 text-rose-800 animate-pulse'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {staffAssignedTasks.length > 0 ? `${staffAssignedTasks.length} Aktif Görev` : 'Görev Yok'}
                     </span>
                   </div>
 
-                  <div className="bg-white/90 p-3 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
-                    <div>
-                      <strong>Bildirilen Sorunlar:</strong>{' '}
-                      <span className="text-rose-700 font-bold">
-                        {activeIncidentForStaff.issuesJson?.join(', ') || 'Genel Temizlik İhtiyacı'}
+                  {staffAssignedTasks.length > 0 ? (
+                    staffAssignedTasks.map((task) => {
+                      const isNonConformity = task.issuesJson?.some((iss) => iss.startsWith('❌') || iss.includes('Denetim'));
+                      return (
+                        <div
+                          key={task.id}
+                          className="p-4 bg-amber-50/90 border-2 border-amber-400 rounded-2xl space-y-3 shadow-md"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={`px-2 py-0.5 rounded font-black text-[10px] flex items-center gap-1 ${
+                              isNonConformity ? 'bg-purple-200 text-purple-900' : 'bg-rose-200 text-rose-900'
+                            }`}>
+                              <i className={`fa-solid ${isNonConformity ? 'fa-clipboard-question' : 'fa-triangle-exclamation'}`}></i>
+                              {isNonConformity ? 'ŞEF DENETİM UYGUNSUZLUĞU' : 'ZİYARETÇİ KÖTÜ ANKETİ'}
+                            </span>
+                            <span className="font-mono text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded border">
+                              {task.id} • {task.time}
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-3 rounded-xl border border-amber-200 space-y-1 text-xs">
+                            <span className="text-slate-500 block text-[11px] font-bold">Müdahale Edilecek Konular:</span>
+                            <div className="font-bold text-rose-900 text-xs">
+                              {task.issuesJson?.join(', ') || 'Genel Temizlik İhtiyacı'}
+                            </div>
+                            {task.resolutionNote && (
+                              <p className="text-[11px] text-purple-800 italic pt-1 border-t border-slate-100">
+                                {task.resolutionNote}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Fotoğraf Ekleme Alanı */}
+                          <div className="space-y-2 pt-1 border-t border-amber-200">
+                            <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                              <i className="fa-solid fa-camera text-blue-600"></i>
+                              Müdahale Kanıt Fotoğrafı Ekleyiniz:
+                            </label>
+
+                            <div className="flex items-center gap-2">
+                              <label className="flex-1 bg-white hover:bg-slate-50 border-2 border-dashed border-amber-400 rounded-xl p-2.5 text-center cursor-pointer transition flex items-center justify-center gap-2 text-xs font-bold text-amber-900 shadow-sm">
+                                <i className="fa-solid fa-camera text-base text-amber-600"></i>
+                                <span>{staffPhotoBase64 ? '✓ Fotoğraf Yüklendi (Değiştir)' : 'Fotoğraf Çek / Dosya Seç'}</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  onChange={handlePhotoSelect}
+                                  className="hidden"
+                                />
+                              </label>
+                              {staffPhotoBase64 && (
+                                <div className="relative">
+                                  <img
+                                    src={staffPhotoBase64}
+                                    alt="Önizleme"
+                                    onClick={() => setViewPhotoUrl(staffPhotoBase64)}
+                                    className="w-12 h-12 object-cover rounded-xl border-2 border-amber-500 cursor-pointer shadow"
+                                    title="Büyütmek için tıklayınız"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setStaffPhotoBase64('')}
+                                    className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center shadow font-bold"
+                                    title="Fotoğrafı Kaldır"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <input
+                                type="text"
+                                value={staffResolveNote}
+                                onChange={(e) => setStaffResolveNote(e.target.value)}
+                                placeholder="Yapılan müdahale notu (örn: Sabun takviye edildi, zemin kurulandı)..."
+                                className="w-full text-xs p-2.5 bg-white border border-amber-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                              />
+                            </div>
+
+                            <button
+                              disabled={busy}
+                              onClick={async () => {
+                                await handleStaffResolve(task.id);
+                                void loadIncidents();
+                              }}
+                              className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-md flex items-center justify-center gap-2 transition"
+                            >
+                              <i className="fa-solid fa-camera"></i>
+                              Fotoğrafla Müdahaleyi Tamamla ve Görevi Kapat
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+                      <span className="flex items-center gap-2 font-bold">
+                        <i className="fa-solid fa-circle-check text-emerald-600 text-base"></i>
+                        Şu anda şeften atanmış acil görev veya denetim uygunsuzluğu yok
+                      </span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">
+                        Rutin Mod
                       </span>
                     </div>
-                    <div className="text-[11px] text-amber-700">
-                      Bildirim Saati: {activeIncidentForStaff.time} ({activeIncidentForStaff.signalCount} bildirim)
-                    </div>
-                  </div>
+                  )}
+                </div>
 
-                  {/* Fotoğraf Ekleme ve Görevi Kapatma Formu */}
-                  <div className="space-y-2 pt-1 border-t border-amber-200">
-                    <label className="text-xs font-bold text-amber-950 block">
-                      📸 Müdahale Kanıt Fotoğrafı Ekleyiniz:
-                    </label>
+                {/* 2. SADE EYLEM BUTONLARI (ŞEF EKRANI GİBİ SADE) */}
+                <div className="space-y-3 pt-3 border-t border-slate-200">
+                  {/* Buton 1: Rutin Temizlik Checklist'i Yap */}
+                  <button
+                    type="button"
+                    onClick={() => setStaffChecklistModalOpen(true)}
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black py-4 px-5 rounded-2xl shadow-lg transition flex items-center justify-between text-sm group"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
+                        <i className="fa-solid fa-list-check"></i>
+                      </span>
+                      <span className="text-left">
+                        <span className="block font-black text-sm">📋 Rutin Temizlik Checklist'i Yap</span>
+                        <span className="block text-[11px] text-blue-200 font-normal">
+                          4 maddelik temizlik checklistini doldur ve beyan oluştur
+                        </span>
+                      </span>
+                    </span>
+                    <i className="fa-solid fa-chevron-right text-blue-200 group-hover:translate-x-1 transition"></i>
+                  </button>
 
-                    <div className="flex items-center gap-2">
-                      <label className="flex-1 bg-white hover:bg-slate-50 border-2 border-dashed border-amber-400 rounded-xl p-3 text-center cursor-pointer transition flex items-center justify-center gap-2 text-xs font-bold text-amber-900 shadow-sm">
-                        <i className="fa-solid fa-camera text-base text-amber-600"></i>
-                        <span>{staffPhotoBase64 ? '✓ Fotoğraf Yüklendi (Değiştir)' : 'Fotoğraf Çek / Dosya Seç'}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={handlePhotoSelect}
-                          className="hidden"
-                        />
-                      </label>
-                      {staffPhotoBase64 && (
-                        <div className="relative">
-                          <img
-                            src={staffPhotoBase64}
-                            alt="Önizleme"
-                            onClick={() => setViewPhotoUrl(staffPhotoBase64)}
-                            className="w-14 h-14 object-cover rounded-xl border-2 border-amber-500 cursor-pointer shadow"
-                            title="Büyütmek için tıklayınız"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setStaffPhotoBase64('')}
-                            className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full w-5 h-5 text-[10px] flex items-center justify-center shadow font-bold"
-                            title="Fotoğrafı Kaldır"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div>
-                      <input
-                        type="text"
-                        value={staffResolveNote}
-                        onChange={(e) => setStaffResolveNote(e.target.value)}
-                        placeholder="Müdahale notunuz (örn: Sıvı sabun tamamlandı, zemin kurulandı)..."
-                        className="w-full text-xs p-2.5 bg-white border border-amber-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 font-medium"
-                      />
-                    </div>
-
+                  {/* Buton 2 & 3: Planlanan & Geçmiş Saatler */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
-                      disabled={busy}
-                      onClick={() => handleStaffResolve(activeIncidentForStaff.id)}
-                      className="w-full bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold py-3 rounded-xl text-xs shadow-md flex items-center justify-center gap-2 transition"
+                      type="button"
+                      onClick={() => setStaffScheduleOpen(true)}
+                      className="py-3 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition shadow-sm"
                     >
-                      <i className="fa-solid fa-camera"></i>
-                      Fotoğraflı Müdahaleyi Tamamla ve Şefin Atadığı Görevi Kapat
+                      <i className="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStaffPastOpen(true)}
+                      className="py-3 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition shadow-sm"
+                    >
+                      <i className="fa-solid fa-clock-rotate-left text-blue-600"></i> Geçmiş Temizlikler
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
-                  <span className="flex items-center gap-2 font-bold">
-                    <i className="fa-solid fa-circle-check text-emerald-600 text-base"></i>
-                    Şu Anda Atanmış Acil Görev Yok
-                  </span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">
-                    Rutin Temizlik Modu
-                  </span>
-                </div>
-              )}
-
-              {/* GÖREVLİ OLDUĞU WC'NİN TEMİZLİK CHECKLIST'İ */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <i className="fa-solid fa-list-check text-blue-600"></i>
-                    Görevli WC Temizlik Checklist'i
-                  </h3>
-                  <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded font-bold">
-                    İşlem Saati: {currentTime.substring(0, 5)}
-                  </span>
-                </div>
-
-                <div className="space-y-2 text-xs">
-                  <label className="flex items-center gap-2.5 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={task1}
-                      onChange={(e) => setTask1(e.target.checked)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="font-medium text-slate-700">1. Klozet, pisuvar ve lavabolar dezenfekte edildi</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={task2}
-                      onChange={(e) => setTask2(e.target.checked)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="font-medium text-slate-700">2. Sıvı sabun, kağıt havlu ve tuvalet kağıdı ikmali yapıldı</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={task3}
-                      onChange={(e) => setTask3(e.target.checked)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="font-medium text-slate-700">3. Çöp kovaları boşaltıldı ve yeni poşet takıldı</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 p-2.5 bg-white border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={task4}
-                      onChange={(e) => setTask4(e.target.checked)}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="font-medium text-slate-700">4. Zemin mop ile silindi ve kurulandı</span>
-                  </label>
-                </div>
-
-                <div>
-                  <input
-                    type="text"
-                    value={staffNote}
-                    onChange={(e) => setStaffNote(e.target.value)}
-                    placeholder="Varsa sarf malzeme / arıza bildirim notu..."
-                    className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                  />
-                </div>
-
-                <button
-                  disabled={busy}
-                  onClick={handleCleaningSubmit}
-                  className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-sm"
-                >
-                  <i className="fa-solid fa-circle-check text-lg"></i>
-                  Temizliği Tamamla ve Dijital Beyan Oluştur
-                </button>
-              </div>
-
-              {/* Saatler ve Geçmiş Modal Butonları */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setStaffScheduleOpen(true)}
-                  className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition shadow-sm"
-                >
-                  <i className="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStaffPastOpen(true)}
-                  className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition shadow-sm"
-                >
-                  <i className="fa-solid fa-clock-rotate-left text-blue-600"></i> Geçmiş Temizlikler
-                </button>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ======================================================== */}
-        {/* 3. ROL GÖRÜNÜMÜ: ŞEF MODÜLÜ (DENETİM & OPERASYON)        */}
+        {/* 3. ROL GÖRÜNÜMÜ: ŞEF MODÜLÜ (ÇOKLU MAHAL ANKET TAKİPLİ)    */}
         {/* ======================================================== */}
-        {activeTab === 'supervisor' && (
-          <div className="w-full max-w-2xl space-y-4">
-            {/* 1. SAYFANIN ÜST KISMINDA: KÖTÜ ANKET BİLDİRİM EKRANI */}
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-800 via-indigo-900 to-purple-800 text-white p-4 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <i className="fa-solid fa-bell text-rose-400 text-lg animate-pulse"></i>
-                  <div>
-                    <h3 className="text-sm font-black tracking-wide">🚨 ANKET BİLDİRİM EKRANI</h3>
-                    <p className="text-[11px] text-purple-200">Misafir şikayetleri ve acil müdahale yönetimi</p>
+        {activeTab === 'supervisor' && (() => {
+          const effectiveIncidents = allIncidents.length > 0 ? allIncidents : (dashboard?.allIncidents || supervisorStatus?.activeIncidents || []);
+          const activeAll = effectiveIncidents.filter((i) => i.status !== 'VERIFIED_CLOSED');
+          const filteredIncidents = activeAll.filter((inc) => {
+            if (incidentFilterLoc !== 'all' && inc.locationId !== incidentFilterLoc) return false;
+            if (incidentFilterStatus !== 'all' && inc.status !== incidentFilterStatus) return false;
+            return true;
+          });
+
+          const openCount = activeAll.filter((i) => i.status === 'OPEN').length;
+          const dispatchedCount = activeAll.filter((i) => i.status === 'DISPATCHED').length;
+          const resolvedCount = activeAll.filter((i) => i.status === 'RESOLVED_BY_STAFF').length;
+
+          return (
+            <div className="w-full max-w-2xl space-y-4">
+              {/* 1. EN ÜSTTE: ÇOKLU MAHAL ANKET & UYGUNSUZLUK BİLDİRİM MERKEZİ */}
+              <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-800 via-indigo-900 to-purple-800 text-white p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <i className="fa-solid fa-bell text-rose-400 text-lg animate-pulse"></i>
+                    <div>
+                      <h3 className="text-sm font-black tracking-wide">🚨 ANKET &amp; UYGUNSUZLUK BİLDİRİM EKRANI</h3>
+                      <p className="text-[11px] text-purple-200">Tüm mahallerden gelen canlı şikayet ve olay masası</p>
+                    </div>
                   </div>
-                </div>
-                {supervisorStatus?.activeIncidents && supervisorStatus.activeIncidents.length > 0 && (
-                  <span className="bg-rose-600 text-white font-black px-2.5 py-1 rounded-full text-xs shadow animate-bounce">
-                    {supervisorStatus.activeIncidents.length} Aktif Bildirim
+                  <span className="bg-rose-600 text-white font-black px-2.5 py-1 rounded-full text-xs shadow">
+                    {activeAll.length} Canlı Bildirim
                   </span>
-                )}
-              </div>
+                </div>
 
-              <div className="p-4 space-y-3">
-                {supervisorStatus?.activeIncidents && supervisorStatus.activeIncidents.length > 0 ? (
-                  supervisorStatus.activeIncidents.map((inc) => (
-                    <div
-                      key={inc.id}
-                      className={`p-3.5 rounded-xl space-y-2 text-xs border-2 shadow-sm ${
-                        inc.status === 'OPEN'
-                          ? 'bg-rose-50 border-rose-400'
-                          : inc.status === 'DISPATCHED'
-                          ? 'bg-amber-50 border-amber-300'
-                          : 'bg-emerald-50 border-emerald-400'
+                {/* Filtreleme ve Özet Çubuğu */}
+                <div className="p-4 space-y-3 border-b border-slate-100 bg-slate-50/70">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      onClick={() => setIncidentFilterStatus('all')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                        incidentFilterStatus === 'all'
+                          ? 'bg-purple-700 text-white shadow'
+                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="flex items-center justify-between font-bold">
-                        <span className="text-slate-900 flex items-center gap-1.5">
-                          {inc.status === 'OPEN' && '🚨 YENİ ŞİKAYET'}
-                          {inc.status === 'DISPATCHED' && '🏃 MÜDAHALE SÜRÜYOR'}
-                          {inc.status === 'RESOLVED_BY_STAFF' && '📸 MÜDAHALE TAMAMLANDI - FOTOĞRAFLI ONAY BEKLİYOR'}
-                          <span className="font-mono text-[11px] text-slate-500">({inc.id})</span>
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] bg-white border border-slate-200 font-bold text-slate-700">
-                          {inc.signalCount} Bildirim • Saat: {inc.time}
-                        </span>
-                      </div>
+                      Tümü ({activeAll.length})
+                    </button>
+                    <button
+                      onClick={() => setIncidentFilterStatus('OPEN')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        incidentFilterStatus === 'OPEN'
+                          ? 'bg-rose-600 text-white shadow'
+                          : 'bg-white text-rose-700 border border-rose-200 hover:bg-rose-50'
+                      }`}
+                    >
+                      🚨 Bekleyen ({openCount})
+                    </button>
+                    <button
+                      onClick={() => setIncidentFilterStatus('DISPATCHED')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        incidentFilterStatus === 'DISPATCHED'
+                          ? 'bg-amber-600 text-white shadow'
+                          : 'bg-white text-amber-700 border border-amber-200 hover:bg-amber-50'
+                      }`}
+                    >
+                      🏃 Müdahalede ({dispatchedCount})
+                    </button>
+                    <button
+                      onClick={() => setIncidentFilterStatus('RESOLVED_BY_STAFF')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        incidentFilterStatus === 'RESOLVED_BY_STAFF'
+                          ? 'bg-emerald-600 text-white shadow'
+                          : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50'
+                      }`}
+                    >
+                      📸 Fotoğraflı Onay ({resolvedCount})
+                    </button>
+                  </div>
 
-                      <p className="text-slate-800">
-                        Bildirilen Sorunlar:{' '}
-                        <strong className="text-rose-700">
-                          {inc.issuesJson?.join(', ') || 'Genel Şikayet'}
-                        </strong>
-                      </p>
+                  {/* Çoklu Alan / Mahal Seçici Filtresi */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                      <i className="fa-solid fa-filter text-purple-600 mr-1"></i> Mahal Filtresi:
+                    </span>
+                    <select
+                      value={incidentFilterLoc}
+                      onChange={(e) => setIncidentFilterLoc(e.target.value)}
+                      className="flex-1 bg-white border border-purple-200 rounded-lg p-1.5 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-purple-400"
+                    >
+                      <option value="all">🏢 Tüm Mahaller &amp; Alanlar ({activeAll.length} Bildirim)</option>
+                      {locations.map((loc) => {
+                        const count = activeAll.filter((i) => i.locationId === loc.id).length;
+                        return (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.name} ({loc.code}) {count > 0 ? `— 🚨 ${count} Bildirim` : '— Temiz'}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
 
-                      {/* Durum: AÇIK ŞİKAYET - PERSONELE ATA */}
-                      {inc.status === 'OPEN' && (
-                        <div className="flex items-center gap-2 pt-1 border-t border-rose-200">
-                          <select
-                            value={assigneeMap[inc.id] || 'Ahmet Temizlik'}
-                            onChange={(e) => setAssigneeMap({ ...assigneeMap, [inc.id]: e.target.value })}
-                            className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs font-semibold outline-none focus:ring-1 focus:ring-purple-500"
-                          >
-                            <option value="Ahmet Temizlik">Ahmet Temizlik (Görevli Personel)</option>
-                            <option value="Mehmet Hijyen">Mehmet Hijyen</option>
-                            <option value="Ayşe Kaya">Ayşe Kaya</option>
-                            <option value="Fatma Çelik">Fatma Çelik</option>
-                          </select>
-                          <button
-                            onClick={() => handleDispatch(inc.id)}
-                            className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 px-3 rounded-lg shadow text-xs flex items-center gap-1.5 whitespace-nowrap"
-                          >
-                            📢 Personele Görev Ata
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Durum: ATANDI - PERSONEL SAHADA */}
-                      {inc.status === 'DISPATCHED' && (
-                        <div className="p-2 bg-amber-100/70 rounded-lg text-amber-900 font-medium flex items-center justify-between">
-                          <span>
-                            Görev <strong>{inc.assignedStaffName || 'Personel'}</strong> personeline atandı. Müdahale bekleniyor...
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Durum: PERSONEL MÜDAHALE ETTİ - FOTOĞRAFLI ONAY BEKLİYOR */}
-                      {inc.status === 'RESOLVED_BY_STAFF' && (
-                        <div className="space-y-2 pt-1 border-t border-emerald-200">
-                          <p className="text-xs text-emerald-900">
-                            <strong>{inc.assignedStaffName}</strong> müdahaleyi tamamladı.
-                            <span className="block mt-0.5 text-slate-700 italic">
-                              Not: "{inc.resolutionNote || 'Sorun giderildi'}"
+                <div className="p-4 space-y-3">
+                  {filteredIncidents.length > 0 ? (
+                    filteredIncidents.map((inc) => {
+                      const isNonConformity = inc.issuesJson?.some((iss) => iss.startsWith('❌') || iss.includes('Denetim'));
+                      return (
+                        <div
+                          key={inc.id}
+                          className={`p-3.5 rounded-xl space-y-2 text-xs border-2 shadow-sm ${
+                            inc.status === 'OPEN'
+                              ? 'bg-rose-50 border-rose-400'
+                              : inc.status === 'DISPATCHED'
+                              ? 'bg-amber-50 border-amber-300'
+                              : 'bg-emerald-50 border-emerald-400'
+                          }`}
+                        >
+                          {/* Mahal Rozeti & Hızlı Odaklanma Butonu */}
+                          <div className="flex items-center justify-between bg-white/90 p-2 rounded-lg border border-slate-200">
+                            <span className="font-bold text-xs text-purple-950 flex items-center gap-1.5">
+                              <i className="fa-solid fa-location-dot text-rose-600"></i>
+                              {inc.locationName || locations.find((l) => l.id === inc.locationId)?.name || 'WC Mahali'} ({inc.locationCode || ''})
                             </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedId(inc.locationId);
+                                setNotice({ text: `${inc.locationName || 'Seçilen mahal'} denetim için seçildi.` });
+                              }}
+                              className="text-[11px] bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded transition flex items-center gap-1 shadow-sm"
+                              title="Bu mahali denetim için seç"
+                            >
+                              <i className="fa-solid fa-arrow-right"></i> Bu Mahale Git
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between font-bold">
+                            <span className="text-slate-900 flex items-center gap-1.5">
+                              {inc.status === 'OPEN' && '🚨 YENİ BİLDİRİM'}
+                              {inc.status === 'DISPATCHED' && '🏃 MÜDAHALE SÜRÜYOR'}
+                              {inc.status === 'RESOLVED_BY_STAFF' && '📸 MÜDAHALE TAMAMLANDI - FOTOĞRAFLI ONAY BEKLİYOR'}
+                              <span className="font-mono text-[10px] text-slate-500">({inc.id})</span>
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              isNonConformity ? 'bg-purple-200 text-purple-900' : 'bg-rose-200 text-rose-900'
+                            }`}>
+                              {isNonConformity ? 'Şef Uygunsuzluğu' : 'Ziyaretçi Anketi'} • Saat: {inc.time}
+                            </span>
+                          </div>
+
+                          <p className="text-slate-800">
+                            Tespit Edilen Sorunlar:{' '}
+                            <strong className="text-rose-700">
+                              {inc.issuesJson?.join(', ') || 'Genel Şikayet'}
+                            </strong>
                           </p>
 
-                          {/* Fotoğraf Kanıtı */}
-                          {inc.photoUrl && (
-                            <div className="flex items-center gap-3 p-2 bg-white rounded-xl border border-emerald-300">
-                              <img
-                                src={inc.photoUrl}
-                                alt="Müdahale Kanıt Fotoğrafı"
-                                onClick={() => setViewPhotoUrl(inc.photoUrl || null)}
-                                className="w-16 h-16 object-cover rounded-lg border-2 border-emerald-500 cursor-pointer shadow hover:opacity-90 transition"
-                                title="Büyük boyutta görmek için tıklayınız"
-                              />
-                              <div className="text-xs text-slate-600">
-                                <span className="font-bold text-emerald-800 block">📸 Personel Müdahale Kanıt Fotoğrafı</span>
-                                <span className="text-[11px] text-slate-500">Büyütmek için fotoğrafa tıklayabilirsiniz.</span>
-                              </div>
+                          {/* Durum: AÇIK ŞİKAYET - PERSONELE ATA */}
+                          {inc.status === 'OPEN' && (
+                            <div className="flex items-center gap-2 pt-1 border-t border-rose-200">
+                              <select
+                                value={assigneeMap[inc.id] || 'Ahmet Temizlik'}
+                                onChange={(e) => setAssigneeMap({ ...assigneeMap, [inc.id]: e.target.value })}
+                                className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs font-semibold outline-none focus:ring-1 focus:ring-purple-500"
+                              >
+                                <option value="Ahmet Temizlik">Ahmet Temizlik (Görevli Personel)</option>
+                                <option value="Mehmet Hijyen">Mehmet Hijyen</option>
+                                <option value="Ayşe Kaya">Ayşe Kaya</option>
+                                <option value="Fatma Çelik">Fatma Çelik</option>
+                              </select>
+                              <button
+                                onClick={async () => {
+                                  await handleDispatch(inc.id);
+                                  void loadIncidents();
+                                }}
+                                className="bg-rose-600 hover:bg-rose-700 text-white font-bold py-2 px-3 rounded-lg shadow text-xs flex items-center gap-1.5 whitespace-nowrap"
+                              >
+                                📢 Personele Görev Ata
+                              </button>
                             </div>
                           )}
 
-                          <button
-                            onClick={() => handleVerifyClose(inc.id)}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-3 rounded-xl shadow flex items-center justify-center gap-1.5 text-xs transition"
-                          >
-                            <i className="fa-solid fa-stamp"></i> Fotoğrafı &amp; Müdahaleyi Doğrula ve Olayı Kapat
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
-                    <span className="flex items-center gap-2 font-bold">
-                      <i className="fa-solid fa-circle-check text-emerald-600 text-base"></i>
-                      Bu Mahalde Bekleyen Açık Şikayet / Kötü Anket Bildirimi Yok
-                    </span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">
-                      Standart Operasyon
-                    </span>
-                  </div>
-                )}
+                          {/* Durum: ATANDI - PERSONEL SAHADA */}
+                          {inc.status === 'DISPATCHED' && (
+                            <div className="p-2 bg-amber-100/70 rounded-lg text-amber-900 font-medium flex items-center justify-between">
+                              <span>
+                                Görev <strong>{inc.assignedStaffName || 'Personel'}</strong> personeline atandı. Müdahale bekleniyor...
+                              </span>
+                            </div>
+                          )}
 
-                {/* Kaçırılan (MISSED) Slot Uyarısı Varsa */}
-                {supervisorStatus?.dailyScheduleStatus && supervisorStatus.dailyScheduleStatus.missedCount > 0 && (
-                  <div className="p-3 bg-rose-50 border-2 border-rose-400 rounded-xl flex items-center justify-between text-xs text-rose-900 shadow-sm animate-pulse">
-                    <div className="flex items-center gap-2">
-                      <i className="fa-solid fa-triangle-exclamation text-rose-600 text-lg"></i>
-                      <span>
-                        <strong>{supervisorStatus.dailyScheduleStatus.missedCount} Temizlik Slotu Kaçırıldı!</strong>
+                          {/* Durum: PERSONEL MÜDAHALE ETTİ - FOTOĞRAFLI ONAY BEKLİYOR */}
+                          {inc.status === 'RESOLVED_BY_STAFF' && (
+                            <div className="space-y-2 pt-1 border-t border-emerald-200">
+                              <p className="text-xs text-emerald-900">
+                                <strong>{inc.assignedStaffName}</strong> müdahaleyi tamamladı.
+                                <span className="block mt-0.5 text-slate-700 italic">
+                                  Not: "{inc.resolutionNote || 'Sorun giderildi'}"
+                                </span>
+                              </p>
+
+                              {/* Fotoğraf Kanıtı */}
+                              {inc.photoUrl && (
+                                <div className="flex items-center gap-3 p-2 bg-white rounded-xl border border-emerald-300">
+                                  <img
+                                    src={inc.photoUrl}
+                                    alt="Müdahale Kanıt Fotoğrafı"
+                                    onClick={() => setViewPhotoUrl(inc.photoUrl || null)}
+                                    className="w-16 h-16 object-cover rounded-lg border-2 border-emerald-500 cursor-pointer shadow hover:opacity-90 transition"
+                                    title="Büyük boyutta görmek için tıklayınız"
+                                  />
+                                  <div className="text-xs text-slate-600">
+                                    <span className="font-bold text-emerald-800 block">📸 Personel Müdahale Kanıt Fotoğrafı</span>
+                                    <span className="text-[11px] text-slate-500">Büyütmek için fotoğrafa tıklayabilirsiniz.</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              <button
+                                onClick={async () => {
+                                  await handleVerifyClose(inc.id);
+                                  void loadIncidents();
+                                }}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-3 rounded-xl shadow flex items-center justify-center gap-1.5 text-xs transition"
+                              >
+                                <i className="fa-solid fa-stamp"></i> Fotoğrafı &amp; Müdahaleyi Doğrula ve Olayı Kapat
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+                      <span className="flex items-center gap-2 font-bold">
+                        <i className="fa-solid fa-circle-check text-emerald-600 text-base"></i>
+                        Seçili filtrede bekleyen açık şikayet veya uygunsuzluk bildirimi yok
+                      </span>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">
+                        Standart Operasyon
                       </span>
                     </div>
-                    <button
-                      onClick={() => setStaffScheduleOpen(true)}
-                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-2.5 py-1 rounded text-xs shadow"
-                    >
-                      Slotları Gör
-                    </button>
-                  </div>
-                )}
+                  )}
+                </div>
+              </div>
+
+              {/* 2. WC SEÇME KUTUSU VE SEÇTİĞİ ALAN İÇİN 3 BUTON */}
+              <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 space-y-5">
+                <div>
+                  <label className="text-xs font-black text-slate-700 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
+                    <i className="fa-solid fa-restroom text-purple-600"></i>
+                    Denetlenecek WC / Mahal Seçimi:
+                  </label>
+                  <select
+                    value={selectedId}
+                    onChange={(e) => setSelectedId(e.target.value)}
+                    className="w-full bg-slate-50 border-2 border-slate-300 hover:border-purple-400 rounded-xl p-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition shadow-sm"
+                  >
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name} ({loc.code}) — {loc.building}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Seçili WC: <strong className="text-slate-800">{curLocation?.name}</strong> • Son Temizlik:{' '}
+                    <strong className="text-purple-800">
+                      {supervisorStatus?.lastCleaning?.actualTime || 'Henüz Yapılmadı'}
+                    </strong>
+                  </p>
+                </div>
+
+                {/* 3 BÜYÜK EYLEM BUTONU (ŞEF EKRANINDA BAŞKA BİR ŞEY OLMAYACAK) */}
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  {/* Buton 1: Denetim Yap */}
+                  <button
+                    type="button"
+                    onClick={() => setSupervisorAuditModalOpen(true)}
+                    className="w-full bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white font-black py-4 px-5 rounded-2xl shadow-lg transition flex items-center justify-between text-sm group"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
+                        <i className="fa-solid fa-clipboard-check"></i>
+                      </span>
+                      <span className="text-left">
+                        <span className="block text-base">📋 Denetim Yap</span>
+                        <span className="text-xs text-purple-200 font-normal">Bu alan için kalite denetim checklistini doldur ve onayla</span>
+                      </span>
+                    </span>
+                    <i className="fa-solid fa-chevron-right text-purple-300 group-hover:translate-x-1 transition"></i>
+                  </button>
+
+                  {/* Buton 2: Planlanan Temizlik Saatleri */}
+                  <button
+                    type="button"
+                    onClick={() => setStaffScheduleOpen(true)}
+                    className="w-full bg-gradient-to-r from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white font-black py-4 px-5 rounded-2xl shadow-lg transition flex items-center justify-between text-sm group"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
+                        <i className="fa-solid fa-calendar-days"></i>
+                      </span>
+                      <span className="text-left">
+                        <span className="block text-base">📅 Planlanan Temizlik Saatleri</span>
+                        <span className="text-xs text-indigo-200 font-normal">Günlük slot saatleri, SLA durumları ve tolerans uyumu</span>
+                      </span>
+                    </span>
+                    <i className="fa-solid fa-chevron-right text-indigo-300 group-hover:translate-x-1 transition"></i>
+                  </button>
+
+                  {/* Buton 3: Mevcut Temizlik Saatleri */}
+                  <button
+                    type="button"
+                    onClick={() => setStaffPastOpen(true)}
+                    className="w-full bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-black py-4 px-5 rounded-2xl shadow-lg transition flex items-center justify-between text-sm group"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
+                        <i className="fa-solid fa-clock-rotate-left text-teal-300"></i>
+                      </span>
+                      <span className="text-left">
+                        <span className="block text-base">🕒 Mevcut Temizlik Saatleri</span>
+                        <span className="text-xs text-slate-300 font-normal">Bugün bu alanda yapılan temizliklerin saat ve personel kayıtları</span>
+                      </span>
+                    </span>
+                    <i className="fa-solid fa-chevron-right text-slate-400 group-hover:translate-x-1 transition"></i>
+                  </button>
+                </div>
               </div>
             </div>
-
-            {/* 2. WC SEÇME KUTUSU VE SEÇTİĞİ ALAN İÇİN 3 BUTON */}
-            <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 space-y-5">
-              <div>
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-restroom text-purple-600"></i>
-                  Denetlenecek WC / Mahal Seçimi:
-                </label>
-                <select
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                  className="w-full bg-slate-50 border-2 border-slate-300 hover:border-purple-400 rounded-xl p-3 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition shadow-sm"
-                >
-                  {locations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name} ({loc.code}) — {loc.building}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Seçili WC: <strong className="text-slate-800">{curLocation?.name}</strong> • Son Temizlik:{' '}
-                  <strong className="text-purple-800">
-                    {supervisorStatus?.lastCleaning?.actualTime || 'Henüz Yapılmadı'}
-                  </strong>
-                </p>
-              </div>
-
-              {/* 3 BÜYÜK EYLEM BUTONU */}
-              <div className="space-y-3 pt-2 border-t border-slate-100">
-                {/* Buton 1: Denetim Yap */}
-                <button
-                  type="button"
-                  onClick={() => setSupervisorAuditModalOpen(true)}
-                  className="w-full bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white font-black py-4 px-5 rounded-2xl shadow-lg transition flex items-center justify-between text-sm group"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
-                      <i className="fa-solid fa-clipboard-check"></i>
-                    </span>
-                    <span className="text-left">
-                      <span className="block text-base">📋 Denetim Yap</span>
-                      <span className="text-xs text-purple-200 font-normal">Bu alan için kalite denetim checklistini doldur ve onayla</span>
-                    </span>
-                  </span>
-                  <i className="fa-solid fa-chevron-right text-purple-300 group-hover:translate-x-1 transition"></i>
-                </button>
-
-                {/* Buton 2: Planlanan Temizlik Saatleri */}
-                <button
-                  type="button"
-                  onClick={() => setStaffScheduleOpen(true)}
-                  className="w-full bg-gradient-to-r from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white font-black py-4 px-5 rounded-2xl shadow-lg transition flex items-center justify-between text-sm group"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
-                      <i className="fa-solid fa-calendar-days"></i>
-                    </span>
-                    <span className="text-left">
-                      <span className="block text-base">📅 Planlanan Temizlik Saatleri</span>
-                      <span className="text-xs text-indigo-200 font-normal">Günlük slot saatleri, SLA durumları ve kaçırılan slotlar</span>
-                    </span>
-                  </span>
-                  <i className="fa-solid fa-chevron-right text-indigo-300 group-hover:translate-x-1 transition"></i>
-                </button>
-
-                {/* Buton 3: Mevcut Temizlik Saatleri */}
-                <button
-                  type="button"
-                  onClick={() => setStaffPastOpen(true)}
-                  className="w-full bg-gradient-to-r from-slate-700 to-slate-800 hover:from-slate-800 hover:to-slate-900 text-white font-black py-4 px-5 rounded-2xl shadow-lg transition flex items-center justify-between text-sm group"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
-                      <i className="fa-solid fa-clock-rotate-left text-teal-300"></i>
-                    </span>
-                    <span className="text-left">
-                      <span className="block text-base">🕒 Mevcut Temizlik Saatleri</span>
-                      <span className="text-xs text-slate-300 font-normal">Bugün bu alanda yapılan temizliklerin saat ve personel kayıtları</span>
-                    </span>
-                  </span>
-                  <i className="fa-solid fa-chevron-right text-slate-400 group-hover:translate-x-1 transition"></i>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}{/* ======================================================== */}
-        {/* 4. ROL GÖRÜNÜMÜ: SİSTEM YÖNETİCİSİ (ADMİN) MERKEZİ       */}
+          );
+        })()}{/* 4. ROL GÖRÜNÜMÜ: SİSTEM YÖNETİCİSİ (ADMİN) MERKEZİ       */}
         {/* ======================================================== */}
         {activeTab === 'admin' && (
           <div className="w-full max-w-5xl space-y-4">
@@ -2468,6 +2589,94 @@ export default function App() {
               >
                 Kapat
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2.5. Personel Rutin Temizlik Checklist Modalı */}
+      {staffChecklistModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white p-4 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider bg-blue-500/40 px-2 py-0.5 rounded">
+                  Rutin Temizlik Formu
+                </span>
+                <h3 className="font-bold text-sm mt-1">📋 {curLocation?.name}</h3>
+              </div>
+              <button
+                onClick={() => setStaffChecklistModalOpen(false)}
+                className="text-white hover:text-blue-200 text-lg w-8 h-8 rounded-full flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="space-y-2 text-xs">
+                <label className="flex items-center gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-blue-50/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={task1}
+                    onChange={(e) => setTask1(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="font-semibold text-slate-800">1. Klozet, pisuvar ve lavabolar dezenfekte edildi</span>
+                </label>
+                <label className="flex items-center gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-blue-50/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={task2}
+                    onChange={(e) => setTask2(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="font-semibold text-slate-800">2. Sıvı sabun, kağıt havlu ve tuvalet kağıdı ikmali yapıldı</span>
+                </label>
+                <label className="flex items-center gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-blue-50/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={task3}
+                    onChange={(e) => setTask3(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="font-semibold text-slate-800">3. Çöp kovaları boşaltıldı ve yeni poşet takıldı</span>
+                </label>
+                <label className="flex items-center gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-blue-50/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={task4}
+                    onChange={(e) => setTask4(e.target.checked)}
+                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="font-semibold text-slate-800">4. Zemin mop ile silindi ve kurulandı</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Varsa Sarf / Arıza Notu:</label>
+                <input
+                  type="text"
+                  value={staffNote}
+                  onChange={(e) => setStaffNote(e.target.value)}
+                  placeholder="Sarf malzeme ikmali veya teknik arıza notu..."
+                  className="w-full text-xs p-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    await handleCleaningSubmit();
+                    setStaffChecklistModalOpen(false);
+                  }}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition"
+                >
+                  <i className="fa-solid fa-circle-check text-base"></i>
+                  Temizliği Tamamla ve Dijital Beyan Oluştur
+                </button>
+              </div>
             </div>
           </div>
         </div>

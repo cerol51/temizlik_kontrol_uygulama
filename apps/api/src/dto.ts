@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsInt,
   IsIn,
+  IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
@@ -69,8 +70,8 @@ export class CreateSupervisorAuditDto {
   @IsBoolean()
   isApproved: boolean;
 
-  @IsObject()
-  checklist: Record<string, boolean>;
+  @IsNotEmpty()
+  checklist: any;
 
   @IsOptional()
   @IsString()

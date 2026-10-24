@@ -18,6 +18,8 @@ export type Restroom = Location;
 export interface Incident {
   id: string;
   locationId: string;
+  locationName?: string;
+  locationCode?: string;
   status: 'OPEN' | 'ESCALATED' | 'DISPATCHED' | 'RESOLVED_BY_STAFF' | 'VERIFIED_CLOSED';
   issuesJson: string[];
   signalCount: number;
@@ -141,6 +143,7 @@ export interface DashboardData {
   paretoData: ParetoItem[];
   locationMatrix: LocationMatrixRow[];
   auditLogs: AuditLogRow[];
+  allIncidents?: Incident[];
 }
 
 export interface Notification {

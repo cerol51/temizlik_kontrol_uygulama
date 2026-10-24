@@ -179,6 +179,16 @@ export class ReportsController {
       paretoData,
       locationMatrix,
       auditLogs,
+      allIncidents: incidents
+        .filter((i) => i.status !== 'VERIFIED_CLOSED')
+        .map((inc) => {
+          const loc = locations.find((l) => l.id === inc.locationId);
+          return {
+            ...inc,
+            locationName: loc ? loc.name : inc.locationId,
+            locationCode: loc ? loc.code : '',
+          };
+        }),
     };
   }
 
