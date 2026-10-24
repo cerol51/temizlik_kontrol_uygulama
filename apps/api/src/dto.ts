@@ -108,6 +108,10 @@ export class StaffResolveIncidentDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
 }
 
 export class VerifyCloseIncidentDto {

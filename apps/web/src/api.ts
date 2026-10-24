@@ -28,6 +28,7 @@ export interface Incident {
   time: string;
   resolvedAt?: string | null;
   resolutionNote?: string | null;
+  photoUrl?: string | null;
 }
 
 export interface PublicLocationStatus {

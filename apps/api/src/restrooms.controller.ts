@@ -640,6 +640,7 @@ export class RestroomsController implements OnModuleDestroy {
     incident.resolvedAt = currentTime;
     incident.resolvedAtUtc = new Date();
     incident.resolutionNote = body.note || 'Sarf malzemeleri ikmal edildi, dezenfeksiyon yapıldı.';
+    if (body.photoUrl) incident.photoUrl = body.photoUrl;
     if (body.staffName) incident.assignedStaffName = body.staffName;
 
     await this.incidents.save(incident);

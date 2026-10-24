@@ -185,80 +185,94 @@
     <div id="view-staff" class="hidden w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
       <div class="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5">
         <div class="flex items-center justify-between">
-          <div>
-            <span class="text-[10px] uppercase font-bold tracking-wider bg-blue-500/40 px-2 py-0.5 rounded">Saha Operasyon</span>
-            <h2 id="staff-location-title" class="text-lg font-bold mt-1">Zemin Kat - Erkek WC</h2>
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shadow-inner">
+              <i class="fa-solid fa-broom"></i>
+            </div>
+            <div>
+              <span class="text-[10px] uppercase font-bold tracking-wider bg-blue-500/40 px-2 py-0.5 rounded">Saha Operasyon</span>
+              <h2 id="staff-location-title" class="text-base font-bold mt-0.5">Zemin Kat - Erkek WC</h2>
+            </div>
           </div>
-          <i class="fa-solid fa-broom text-2xl opacity-80"></i>
+          <span id="staffAutoTime" class="font-mono font-bold text-xs bg-black/25 px-2.5 py-1 rounded border border-white/20">--:--</span>
         </div>
       </div>
 
       <div class="p-5 space-y-4">
-        <!-- Şef Atamalı Acil Görev Kartı -->
-        <div id="staffAssignedTicketBox" class="hidden p-3 bg-amber-50 border-2 border-amber-400 rounded-xl space-y-2">
+        <!-- 1. KÖTÜ ANKET BİLDİRİMİNDE ŞEFİN ATAMASIYLA İLGİLİ EKRAN (ACİL GÖREV) -->
+        <div id="staffAssignedTicketBox" class="hidden p-3.5 bg-amber-50 border-2 border-amber-400 rounded-2xl space-y-3 shadow-sm">
           <div class="flex items-center justify-between text-amber-900 font-bold text-xs">
-            <span class="flex items-center gap-1.5"><i class="fa-solid fa-bell text-rose-600 animate-bounce"></i> ŞEF TARAFINDAN ACİL GÖREV ATANDI!</span>
-            <span id="ticketBadge" class="bg-amber-200 px-2 py-0.5 rounded text-[10px]">Müdahale Bekleniyor</span>
+            <span class="flex items-center gap-1.5"><i class="fa-solid fa-bell text-rose-600 animate-bounce"></i> ŞEF TARAFINDAN GÖREV ATANDI!</span>
+            <span id="ticketBadge" class="bg-amber-200 text-amber-900 px-2 py-0.5 rounded text-[10px] font-bold">Müdahale Bekleniyor</span>
           </div>
-          <p id="ticketDetailsText" class="text-xs text-amber-800"></p>
-          <button onclick="completeStaffIntervention()" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-xs shadow flex items-center justify-center gap-1.5">
-            <i class="fa-solid fa-check"></i> Müdahaleyi Tamamla ve Şefe Bildir
+          <div class="bg-white/90 p-2.5 rounded-xl border border-amber-200">
+            <p id="ticketDetailsText" class="text-xs text-amber-950 font-semibold"></p>
+          </div>
+
+          <!-- Fotoğraf Ekleme Alanı (Zorunlu Kanıt) -->
+          <div class="space-y-1.5">
+            <label class="text-xs font-bold text-amber-950 flex items-center gap-1">
+              <i class="fa-solid fa-camera text-blue-600"></i> Müdahale / İkmal Fotoğrafı Ekle:
+            </label>
+            <input type="file" id="staffPhotoInput" accept="image/*" capture="environment" onchange="handleStaffPhotoUpload(event)" class="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+            <div id="staffPhotoPreviewContainer" class="hidden relative mt-2 rounded-xl overflow-hidden border border-amber-300 max-h-48 bg-slate-100 flex items-center justify-center">
+              <img id="staffPhotoPreviewImg" src="" alt="Müdahale Fotoğrafı" class="object-cover max-h-48 w-full cursor-pointer" onclick="openPhotoViewer(this.src)">
+              <button type="button" onclick="clearStaffPhoto()" class="absolute top-2 right-2 bg-rose-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow hover:bg-rose-700">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Müdahale Notu -->
+          <div>
+            <input type="text" id="staffInterventionNote" placeholder="Yapılan müdahale açıklaması (örn: Sıvı sabun takviye edildi)..." class="w-full text-xs p-2.5 bg-white border border-amber-300 rounded-lg outline-none focus:ring-1 focus:ring-amber-500 text-slate-800">
+          </div>
+
+          <!-- Fotoğraflı Kapatma Butonu -->
+          <button onclick="completeStaffInterventionWithPhoto()" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-md flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-camera"></i>
+            <span>Fotoğrafla Müdahaleyi Tamamla ve Görevi Kapat</span>
           </button>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          <button onclick="openPastCleaningsModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-            <i class="fa-solid fa-clock-rotate-left text-blue-600"></i> Önceki Temizlikler
-          </button>
-          <button onclick="openScheduleModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition">
-            <i class="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
-          </button>
-        </div>
-
-        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-bold text-slate-700">Görevli Personel:</span>
-            <select id="staffNameSelect" class="bg-white border border-slate-300 rounded px-2.5 py-1 font-semibold text-xs text-slate-800 outline-none">
-              <option value="Ahmet Yılmaz">Ahmet Yılmaz (Sicil: 1042)</option>
-              <option value="Mehmet Demir">Mehmet Demir (Sicil: 1058)</option>
-              <option value="Ayşe Kaya">Ayşe Kaya (Sicil: 1081)</option>
-              <option value="Fatma Çelik">Fatma Çelik (Sicil: 1092)</option>
-            </select>
+        <!-- 2. GÖREVLİ OLDUĞU WC'NİN TEMİZLİK CHECKLIST'İ -->
+        <div class="space-y-3 pt-1 border-t border-slate-200">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+              <i class="fa-solid fa-list-check text-blue-600"></i>
+              WC Temizlik Checklist'i:
+            </label>
+            <span class="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-bold border border-blue-200">Rutin Kontrol</span>
           </div>
-          <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
-            <span class="font-medium text-slate-600">Sistem İşlem Saati (UTC+3):</span>
-            <span id="staffAutoTime" class="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">--:--</span>
+
+          <div class="space-y-2">
+            <label class="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer hover:bg-blue-50/50 transition">
+              <input type="checkbox" id="st-c1" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+              <span class="font-medium text-slate-700">Klozet, pisuvar ve lavabolar dezenfekte edildi</span>
+            </label>
+            <label class="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer hover:bg-blue-50/50 transition">
+              <input type="checkbox" id="st-c2" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+              <span class="font-medium text-slate-700">Sıvı sabun, kağıt havlu ve tuvalet kağıdı ikmali yapıldı</span>
+            </label>
+            <label class="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer hover:bg-blue-50/50 transition">
+              <input type="checkbox" id="st-c3" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+              <span class="font-medium text-slate-700">Çöp kovaları boşaltıldı ve yeni poşet takıldı</span>
+            </label>
+            <label class="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs cursor-pointer hover:bg-blue-50/50 transition">
+              <input type="checkbox" id="st-c4" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">
+              <span class="font-medium text-slate-700">Zemin mop ile silindi ve kurulandı</span>
+            </label>
           </div>
-        </div>
 
-        <div class="space-y-1.5">
-          <label class="text-xs font-bold text-slate-700 block">Yapılan İşlemleri Onaylayınız:</label>
-          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-            <input type="checkbox" id="st-c1" checked class="rounded text-blue-600">
-            <span>Klozet, pisuvar ve lavabolar dezenfekte edildi</span>
-          </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-            <input type="checkbox" id="st-c2" checked class="rounded text-blue-600">
-            <span>Sıvı sabun, kağıt havlu ve tuvalet kağıdı ikmali yapıldı</span>
-          </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-            <input type="checkbox" id="st-c3" checked class="rounded text-blue-600">
-            <span>Çöp kovaları boşaltıldı ve yeni poşet takıldı</span>
-          </label>
-          <label class="flex items-center gap-2 p-2 bg-slate-50 border rounded-lg text-xs cursor-pointer hover:bg-slate-100 transition">
-            <input type="checkbox" id="st-c4" checked class="rounded text-blue-600">
-            <span>Zemin mop ile silindi ve kurulandı</span>
-          </label>
-        </div>
+          <div>
+            <input type="text" id="staffOptionalNote" placeholder="Varsa arıza/sarf ikmal notu..." class="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500 text-slate-800">
+          </div>
 
-        <div>
-          <input type="text" id="staffOptionalNote" placeholder="Varsa arıza/sarf ikmal notu..." class="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-blue-500">
+          <button onclick="submitCleaning()" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-xs">
+            <i class="fa-solid fa-circle-check text-base"></i>
+            Rutin Temizliği Tamamla ve Dijital Beyan Oluştur
+          </button>
         </div>
-
-        <button onclick="submitCleaning()" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-sm">
-          <i class="fa-solid fa-circle-check text-lg"></i>
-          Temizliği Tamamla ve Dijital Beyan Oluştur
-        </button>
       </div>
     </div>
 
@@ -266,9 +280,14 @@
     <div id="view-supervisor" class="hidden w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
       <div class="bg-gradient-to-r from-purple-700 to-indigo-800 text-white p-5">
         <div class="flex items-center justify-between">
-          <div>
-            <span class="text-[10px] uppercase font-bold tracking-wider bg-purple-500/40 px-2 py-0.5 rounded">Vardiya & Kalite Denetimi</span>
-            <h2 id="sup-location-title" class="text-lg font-bold mt-1">Zemin Kat - Erkek WC</h2>
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shadow-inner">
+              <i class="fa-solid fa-user-tie"></i>
+            </div>
+            <div>
+              <span class="text-[10px] uppercase font-bold tracking-wider bg-purple-500/40 px-2 py-0.5 rounded">Şef Operasyon Merkezi</span>
+              <h2 id="sup-location-title" class="text-base font-bold mt-0.5">Zemin Kat - Erkek WC</h2>
+            </div>
           </div>
           <div class="text-right">
             <span class="text-[10px] block opacity-80">Nöbetçi Şef</span>
@@ -278,100 +297,50 @@
       </div>
 
       <div class="p-5 space-y-4">
-        <!-- Olay Yönetim Hub'ı -->
-        <div id="supIncidentHub" class="space-y-2"></div>
-
-        <div class="grid grid-cols-2 gap-2">
-          <button onclick="openPastCleaningsModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition">
-            <i class="fa-solid fa-clock-rotate-left text-purple-600"></i> Önceki Temizlikler
-          </button>
-          <button onclick="openScheduleModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-semibold py-2 px-2 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition">
-            <i class="fa-solid fa-calendar-days text-indigo-600"></i> Planlanan Saatler
-          </button>
-        </div>
-
-        <button onclick="openSchedulePlannerModal()" class="w-full bg-purple-50 hover:bg-purple-100 text-purple-800 border-2 border-purple-300 font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
-          <i class="fa-solid fa-sliders text-purple-700"></i>
-          ⚙️ Günlük Planı ve Süre Sapma Toleransını Güncelle
-        </button>
-
-        <div class="bg-purple-50/60 border border-purple-200 rounded-xl p-3 text-xs">
-          <span class="text-purple-800 font-bold block mb-1">Denetlenen Son Temizlik Beyanı:</span>
-          <div class="grid grid-cols-2 gap-2 text-slate-700">
-            <div>Personel: <strong id="sup-last-cleaner" class="text-purple-900">-</strong></div>
-            <div>İşlem Saati: <strong id="sup-last-time" class="text-purple-900">-</strong></div>
-            <div class="col-span-2">SLA Uyum Durumu: <span id="sup-sla-badge" class="px-2 py-0.5 rounded text-[11px] font-bold"></span></div>
+        <!-- 1. EN ÜSTTE: KÖTÜ ANKET BİLDİRİM EKRANI -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-black text-rose-800 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-triangle-exclamation text-rose-600 animate-pulse"></i>
+              Kötü Anket Bildirim Ekranı
+            </h3>
+            <span class="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded" id="supIncidentCountBadge">Canlı Bildirimler</span>
           </div>
+          <div id="supIncidentHub" class="space-y-2"></div>
         </div>
 
-        <!-- Puansız Checklist v1.2 -->
-        <div class="border-t border-slate-200 pt-3">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Denetim Maddeleri (Checklist):</h3>
-            <span class="text-[10px] text-purple-700 bg-purple-100 px-2 py-0.5 rounded font-mono font-bold">Şablon Sürümü: v1.2</span>
-          </div>
-
-          <div class="space-y-2 text-xs" id="supervisorChecklist">
-            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
-              <span class="font-medium text-slate-700">1. Ayna ve Lavabolar Lekesiz</span>
-              <div class="flex gap-1">
-                <button type="button" onclick="setCheckItem(1, true)" id="chk-1-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
-                <button type="button" onclick="setCheckItem(1, false)" id="chk-1-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
-              <span class="font-medium text-slate-700">2. Klozet ve Pisuvarlar Hijyenik</span>
-              <div class="flex gap-1">
-                <button type="button" onclick="setCheckItem(2, true)" id="chk-2-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
-                <button type="button" onclick="setCheckItem(2, false)" id="chk-2-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
-              <span class="font-medium text-slate-700">3. Zemin Kuru ve Temiz</span>
-              <div class="flex gap-1">
-                <button type="button" onclick="setCheckItem(3, true)" id="chk-3-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
-                <button type="button" onclick="setCheckItem(3, false)" id="chk-3-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
-              <span class="font-medium text-slate-700">4. Sabun / Kağıt Havlu Dolu</span>
-              <div class="flex gap-1">
-                <button type="button" onclick="setCheckItem(4, true)" id="chk-4-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
-                <button type="button" onclick="setCheckItem(4, false)" id="chk-4-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
-              <span class="font-medium text-slate-700">5. Koku Durumu Ferah</span>
-              <div class="flex gap-1">
-                <button type="button" onclick="setCheckItem(5, true)" id="chk-5-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
-                <button type="button" onclick="setCheckItem(5, false)" id="chk-5-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
-              <span class="font-medium text-slate-700">6. Çöp Kovası Boş ve Poşetli</span>
-              <div class="flex gap-1">
-                <button type="button" onclick="setCheckItem(6, true)" id="chk-6-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
-                <button type="button" onclick="setCheckItem(6, false)" id="chk-6-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
-              </div>
-            </div>
-          </div>
+        <!-- 2. WC SEÇME KUTUSU -->
+        <div class="bg-purple-50/70 border-2 border-purple-200 rounded-xl p-3.5 space-y-1.5">
+          <label class="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+            <i class="fa-solid fa-restroom text-purple-600"></i> Denetlenecek WC / Mahal Seçiniz:
+          </label>
+          <select id="supervisorLocationSelect" onchange="changeSupervisorLocation(this.value)" class="w-full bg-white border border-purple-300 text-slate-800 text-xs font-bold rounded-lg p-2.5 focus:ring-2 focus:ring-purple-400 outline-none shadow-sm cursor-pointer">
+          </select>
         </div>
 
-        <div>
-          <input type="text" id="supervisorNote" placeholder="Varsa şef denetim notu..." class="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-purple-500">
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 pt-1">
-          <button onclick="submitSupervisorAudit(true)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow">
-            <i class="fa-solid fa-check-double"></i> Denetimi Onayla
+        <!-- 3. SEÇİLEN WC İÇİN 3 BUTON (BAŞKA HİÇBİR ŞEY OLMAYACAK) -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+          <!-- Buton 1: Denetim Yap -->
+          <button onclick="openSupervisorAuditModal()" class="bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white font-bold py-3.5 px-3 rounded-xl text-xs flex flex-col items-center justify-center gap-1.5 shadow-md transition transform active:scale-95">
+            <i class="fa-solid fa-clipboard-check text-xl"></i>
+            <span>Denetim Yap</span>
           </button>
-          <button onclick="submitSupervisorAudit(false)" class="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow">
-            <i class="fa-solid fa-triangle-exclamation"></i> Uygunsuzluk / Düzeltme Aç
+
+          <!-- Buton 2: Planlanan Temizlik Saatleri -->
+          <button onclick="openScheduleModal()" class="bg-white hover:bg-purple-50 text-purple-900 border-2 border-purple-300 font-bold py-3.5 px-3 rounded-xl text-xs flex flex-col items-center justify-center gap-1.5 shadow-sm transition transform active:scale-95">
+            <i class="fa-solid fa-calendar-days text-indigo-600 text-xl"></i>
+            <span class="text-center">Planlanan Temizlik Saatleri</span>
+          </button>
+
+          <!-- Buton 3: Mevcut Temizlik Saatleri -->
+          <button onclick="openPastCleaningsModal()" class="bg-white hover:bg-purple-50 text-purple-900 border-2 border-purple-300 font-bold py-3.5 px-3 rounded-xl text-xs flex flex-col items-center justify-center gap-1.5 shadow-sm transition transform active:scale-95">
+            <i class="fa-solid fa-clock-rotate-left text-purple-600 text-xl"></i>
+            <span class="text-center">Mevcut Temizlik Saatleri</span>
           </button>
         </div>
       </div>
     </div>
-
+    
     <!-- 4. YÖNETİM DASHBOARD (ADMİN PANELİ) -->
     <div id="view-admin" class="hidden w-full max-w-5xl space-y-4">
       <!-- Admin Karşılama Başlığı -->
@@ -935,7 +904,94 @@
   </div>
 
   <!-- MODAL: YENİ KULLANICI EKLE (ADMIN) -->
-  <div id="modalAddUser" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <!-- ŞEF DENETİM MODALI (CHECKLIST v1.2) -->
+  <div id="modalSupervisorAudit" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+      <div class="bg-gradient-to-r from-purple-700 to-indigo-800 text-white p-4 flex items-center justify-between">
+        <div>
+          <span class="text-[10px] uppercase font-bold tracking-wider bg-purple-500/40 px-2 py-0.5 rounded">Checklist v1.2</span>
+          <h3 class="font-bold text-sm mt-0.5" id="modalAuditLocTitle">WC Kalite &amp; Hijyen Denetimi</h3>
+        </div>
+        <button onclick="closeModal('modalSupervisorAudit')" class="text-white hover:text-purple-200 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="space-y-2 text-xs" id="supervisorChecklist">
+          <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+            <span class="font-medium text-slate-700">1. Ayna ve Lavabolar Lekesiz</span>
+            <div class="flex gap-1">
+              <button type="button" onclick="setCheckItem(1, true)" id="chk-1-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+              <button type="button" onclick="setCheckItem(1, false)" id="chk-1-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+            <span class="font-medium text-slate-700">2. Klozet ve Pisuvarlar Hijyenik</span>
+            <div class="flex gap-1">
+              <button type="button" onclick="setCheckItem(2, true)" id="chk-2-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+              <button type="button" onclick="setCheckItem(2, false)" id="chk-2-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+            <span class="font-medium text-slate-700">3. Zemin Kuru ve Temiz</span>
+            <div class="flex gap-1">
+              <button type="button" onclick="setCheckItem(3, true)" id="chk-3-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+              <button type="button" onclick="setCheckItem(3, false)" id="chk-3-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+            <span class="font-medium text-slate-700">4. Sabun / Kağıt Havlu Dolu</span>
+            <div class="flex gap-1">
+              <button type="button" onclick="setCheckItem(4, true)" id="chk-4-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+              <button type="button" onclick="setCheckItem(4, false)" id="chk-4-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+            <span class="font-medium text-slate-700">5. Koku Durumu Ferah</span>
+            <div class="flex gap-1">
+              <button type="button" onclick="setCheckItem(5, true)" id="chk-5-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+              <button type="button" onclick="setCheckItem(5, false)" id="chk-5-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between p-2.5 bg-slate-50 border rounded-lg">
+            <span class="font-medium text-slate-700">6. Çöp Kovası Boş ve Poşetli</span>
+            <div class="flex gap-1">
+              <button type="button" onclick="setCheckItem(6, true)" id="chk-6-yes" class="px-2.5 py-1 rounded font-bold bg-emerald-600 text-white">✓ Uygun</button>
+              <button type="button" onclick="setCheckItem(6, false)" id="chk-6-no" class="px-2.5 py-1 rounded font-bold bg-slate-200 text-slate-600">✗ Uygun Değil</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <input type="text" id="supervisorNote" placeholder="Varsa şef denetim notu..." class="w-full text-xs p-2.5 border border-slate-300 rounded-lg outline-none focus:border-purple-500 text-slate-800">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button onclick="submitSupervisorAudit(true)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow">
+            <i class="fa-solid fa-check-double"></i> Denetimi Onayla
+          </button>
+          <button onclick="submitSupervisorAudit(false)" class="bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 px-2 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow">
+            <i class="fa-solid fa-triangle-exclamation"></i> Uygunsuzluk Aç
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOTOĞRAF GÖRÜNTÜLEME MODALI -->
+  <div id="modalPhotoViewer" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4" onclick="closeModal('modalPhotoViewer')">
+    <div class="relative max-w-xl w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl p-2" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between p-2 text-white border-b border-slate-800">
+        <h4 class="text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-camera"></i> Müdahale / İkmal Kanıt Fotoğrafı</h4>
+        <button onclick="closeModal('modalPhotoViewer')" class="text-slate-400 hover:text-white text-base px-2"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-2 flex items-center justify-center">
+        <img id="modalPhotoViewerImg" src="" alt="Müdahale Kanıtı" class="max-h-[80vh] w-auto rounded-lg object-contain">
+      </div>
+    </div>
+  </div>
+
+<div id="modalAddUser" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
       <div class="bg-purple-800 text-white p-4 flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -1196,29 +1252,73 @@
       const container = document.getElementById('roleNavContainer');
       if (!container) return;
 
-      const roles = [
-        { id: 'guest', label: 'Ziyaretçi', icon: 'fa-restroom', activeClass: 'bg-teal-600 text-white shadow' },
-        { id: 'staff', label: 'Personel', icon: 'fa-broom', activeClass: 'bg-blue-600 text-white shadow' },
-        { id: 'supervisor', label: 'Şef Modülü', icon: 'fa-user-tie', activeClass: 'bg-purple-600 text-white shadow' },
-        { id: 'admin', label: 'Yönetim (Admin)', icon: 'fa-crown', activeClass: 'bg-amber-600 text-white shadow' },
-      ];
-
-      container.innerHTML = roles.map(r => {
-        const isActive = state.currentRole === r.id;
-        const cls = isActive
-          ? `${r.activeClass} font-bold`
-          : 'text-slate-300 hover:text-white hover:bg-slate-700/60 font-semibold';
-        return `
-          <button onclick="switchRole('${r.id}')" id="tab-${r.id}" class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 ${cls}">
-            <i class="fa-solid ${r.icon}"></i> ${r.label}
-          </button>
+      // 1. Giriş yapılmamışsa (Misafir): SADECE anket ekranı, diğer kullanıcı ekran butonları ASLA görünmez
+      if (!state.currentUser) {
+        container.innerHTML = `
+          <div class="px-3 py-1 text-xs font-bold text-teal-300 flex items-center gap-2">
+            <i class="fa-solid fa-restroom text-teal-400"></i>
+            <span>Ziyaretçi Memnuniyet Anketi</span>
+          </div>
         `;
-      }).join('');
+        return;
+      }
+
+      // 2. Personel kullanıcı adıyla girildiğinde: SADECE personel ekranı
+      if (state.currentUser.role === 'employee') {
+        container.innerHTML = `
+          <div class="px-3 py-1 text-xs font-bold text-blue-300 flex items-center gap-2">
+            <i class="fa-solid fa-broom text-blue-400"></i>
+            <span>Personel Temizlik & Operasyon Ekranı</span>
+          </div>
+        `;
+        return;
+      }
+
+      // 3. Şef kullanıcı adıyla girildiğinde: SADECE şefin kullanması gereken ekran
+      if (state.currentUser.role === 'supervisor') {
+        container.innerHTML = `
+          <div class="px-3 py-1 text-xs font-bold text-purple-300 flex items-center gap-2">
+            <i class="fa-solid fa-user-tie text-purple-400"></i>
+            <span>Şef Denetim & Olay Masası</span>
+          </div>
+        `;
+        return;
+      }
+
+      // 4. Yönetici (Admin) Paneli
+      if (state.currentUser.role === 'admin') {
+        const roles = [
+          { id: 'admin', label: 'Admin Paneli', icon: 'fa-crown', activeClass: 'bg-amber-600 text-white shadow' },
+          { id: 'supervisor', label: 'Şef Önizleme', icon: 'fa-user-tie', activeClass: 'bg-purple-600 text-white shadow' },
+          { id: 'staff', label: 'Personel Önizleme', icon: 'fa-broom', activeClass: 'bg-blue-600 text-white shadow' },
+          { id: 'guest', label: 'Anket Önizleme', icon: 'fa-restroom', activeClass: 'bg-teal-600 text-white shadow' },
+        ];
+        container.innerHTML = roles.map(r => {
+          const isActive = state.currentRole === r.id;
+          const cls = isActive ? `${r.activeClass} font-bold` : 'text-slate-300 hover:text-white hover:bg-slate-700/60 font-semibold';
+          return `
+            <button onclick="switchRole('${r.id}')" id="tab-${r.id}" class="px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1.5 ${cls}">
+              <i class="fa-solid ${r.icon}"></i> ${r.label}
+            </button>
+          `;
+        }).join('');
+      }
     }
 
     function switchRole(role) {
-      state.currentRole = role || 'guest';
+      // Katı rol izolasyonu doğrulaması:
+      // Misafir ekranı açıkken sadece anket; personel girişinde sadece personel; şef girişinde sadece şef.
+      if (!state.currentUser) {
+        state.currentRole = 'guest';
+      } else if (state.currentUser.role === 'employee') {
+        state.currentRole = 'staff';
+      } else if (state.currentUser.role === 'supervisor') {
+        state.currentRole = 'supervisor';
+      } else if (state.currentUser.role === 'admin') {
+        state.currentRole = role || 'admin';
+      }
 
+      // Tüm ekranları gizle, sadece yetkili ekranı göster
       ['guest', 'staff', 'supervisor', 'admin'].forEach(r => {
         const el = document.getElementById(`view-${r}`);
         if (el) el.classList.toggle('hidden', r !== state.currentRole);
@@ -1269,59 +1369,101 @@
     function populateLocationSelectors() {
       const locSelect = document.getElementById('locationSelector');
       const plannerSelect = document.getElementById('plannerLocationSelect');
-      locSelect.innerHTML = '';
-      plannerSelect.innerHTML = '';
-      state.locations.forEach(loc => {
-        const opt1 = document.createElement('option');
-        opt1.value = loc.id;
-        opt1.textContent = `${loc.name} (${loc.code})`;
-        locSelect.appendChild(opt1);
+      const supSelect = document.getElementById('supervisorLocationSelect');
+      if (locSelect) locSelect.innerHTML = '';
+      if (plannerSelect) plannerSelect.innerHTML = '';
+      if (supSelect) supSelect.innerHTML = '';
 
-        const opt2 = document.createElement('option');
-        opt2.value = loc.id;
-        opt2.textContent = `${loc.name} (${loc.code})`;
-        plannerSelect.appendChild(opt2);
+      state.locations.forEach(loc => {
+        if (locSelect) {
+          const opt1 = document.createElement('option');
+          opt1.value = loc.id;
+          opt1.textContent = `${loc.name} (${loc.code})`;
+          locSelect.appendChild(opt1);
+        }
+        if (plannerSelect) {
+          const opt2 = document.createElement('option');
+          opt2.value = loc.id;
+          opt2.textContent = `${loc.name} (${loc.code})`;
+          plannerSelect.appendChild(opt2);
+        }
+        if (supSelect) {
+          const opt3 = document.createElement('option');
+          opt3.value = loc.id;
+          opt3.textContent = `${loc.name} (${loc.code})`;
+          supSelect.appendChild(opt3);
+        }
       });
-      locSelect.value = state.currentLocationId;
-      plannerSelect.value = state.currentLocationId;
+      if (locSelect) locSelect.value = state.currentLocationId;
+      if (plannerSelect) plannerSelect.value = state.currentLocationId;
+      if (supSelect) supSelect.value = state.currentLocationId;
+    }
+
+    function changeSupervisorLocation(locId) {
+      changeLocation(locId);
     }
 
     function refreshAllViews() {
       const curLoc = state.locations.find(l => l.id === state.currentLocationId) || state.locations[0];
       const curTolerance = curLoc.toleranceMinutes || 15;
 
-      document.getElementById('guest-location-title').textContent = curLoc.name;
-      document.getElementById('guest-location-code').textContent = curLoc.code;
-      document.getElementById('staff-location-title').textContent = curLoc.name;
-      document.getElementById('sup-location-title').textContent = curLoc.name;
-      document.getElementById('supCurrentActiveName').textContent = curLoc.currentSupervisor.name;
+      const gTitle = document.getElementById('guest-location-title');
+      if (gTitle) gTitle.textContent = curLoc.name;
+      const gCode = document.getElementById('guest-location-code');
+      if (gCode) gCode.textContent = curLoc.code;
+
+      const sTitle = document.getElementById('staff-location-title');
+      if (sTitle) sTitle.textContent = curLoc.name;
+
+      const supTitle = document.getElementById('sup-location-title');
+      if (supTitle) supTitle.textContent = curLoc.name;
+      const supActiveName = document.getElementById('supCurrentActiveName');
+      if (supActiveName) supActiveName.textContent = curLoc.currentSupervisor ? curLoc.currentSupervisor.name : 'Nöbetçi Şef';
+
+      const supSelect = document.getElementById('supervisorLocationSelect');
+      if (supSelect && supSelect.value !== state.currentLocationId) {
+        supSelect.value = state.currentLocationId;
+      }
+      const locSelect = document.getElementById('locationSelector');
+      if (locSelect && locSelect.value !== state.currentLocationId) {
+        locSelect.value = state.currentLocationId;
+      }
 
       const locLogs = state.cleaningLogs.filter(l => l.locationId === curLoc.id);
       const lastClean = locLogs.length > 0 ? locLogs[locLogs.length - 1] : null;
-      document.getElementById('guest-last-clean-time').textContent = lastClean ? lastClean.time : '--:--';
+      const gLastClean = document.getElementById('guest-last-clean-time');
+      if (gLastClean) gLastClean.textContent = lastClean ? lastClean.time : '--:--';
 
       // Personel Açık Olay Kartı
       const activeIncidentForStaff = state.incidents.find(inc => inc.locationId === curLoc.id && (inc.status === 'DISPATCHED' || inc.status === 'OPEN'));
       const staffTicketBox = document.getElementById('staffAssignedTicketBox');
-      if (activeIncidentForStaff && activeIncidentForStaff.assignedStaffName) {
-        staffTicketBox.classList.remove('hidden');
-        document.getElementById('ticketBadge').textContent = `Görevli: ${activeIncidentForStaff.assignedStaffName}`;
-        document.getElementById('ticketDetailsText').textContent = `Şikayet Konuları: ${activeIncidentForStaff.issues.join(', ')} (${activeIncidentForStaff.time})`;
-      } else {
-        staffTicketBox.classList.add('hidden');
+      if (staffTicketBox) {
+        if (activeIncidentForStaff && activeIncidentForStaff.assignedStaffName) {
+          staffTicketBox.classList.remove('hidden');
+          const tBadge = document.getElementById('ticketBadge');
+          if (tBadge) tBadge.textContent = `Görevli: ${activeIncidentForStaff.assignedStaffName}`;
+          const tDetails = document.getElementById('ticketDetailsText');
+          if (tDetails) tDetails.textContent = `Şikayet Konuları: ${activeIncidentForStaff.issues.join(', ')} (${activeIncidentForStaff.time})`;
+        } else {
+          staffTicketBox.classList.add('hidden');
+        }
       }
 
-      // Şef Bilgi Kartı
-      document.getElementById('sup-last-cleaner').textContent = lastClean ? lastClean.staffName : 'Kayıt Yok';
-      document.getElementById('sup-last-time').textContent = lastClean ? lastClean.time : '--:--';
+      // Varsa Şef Bilgi Kartı Elemanları
+      const supCleaner = document.getElementById('sup-last-cleaner');
+      if (supCleaner) supCleaner.textContent = lastClean ? lastClean.staffName : 'Kayıt Yok';
+      const supTime = document.getElementById('sup-last-time');
+      if (supTime) supTime.textContent = lastClean ? lastClean.time : '--:--';
       const slaBadge = document.getElementById('sup-sla-badge');
-      if (lastClean) {
-        const sla = evaluateSLA(lastClean.targetSlot, lastClean.time, curTolerance);
-        slaBadge.textContent = sla.label;
-        slaBadge.className = `px-2 py-0.5 rounded text-[11px] font-bold ${sla.badgeClass}`;
-      } else {
-        slaBadge.textContent = 'Henüz Yapılmadı';
-        slaBadge.className = 'px-2 py-0.5 rounded text-[11px] font-bold badge-waiting';
+      if (slaBadge) {
+        if (lastClean) {
+          const sla = evaluateSLA(lastClean.targetSlot, lastClean.time, curTolerance);
+          slaBadge.textContent = sla.label;
+          slaBadge.className = `px-2 py-0.5 rounded text-[11px] font-bold ${sla.badgeClass}`;
+        } else {
+          slaBadge.textContent = 'Henüz Yapılmadı';
+          slaBadge.className = 'px-2 py-0.5 rounded text-[11px] font-bold badge-waiting';
+        }
       }
 
       renderSupervisorIncidentHub();
@@ -1438,13 +1580,22 @@
 
     function renderSupervisorIncidentHub() {
       const hub = document.getElementById('supIncidentHub');
+      if (!hub) return;
       hub.innerHTML = '';
       const activeIncidents = state.incidents.filter(inc => inc.locationId === state.currentLocationId && inc.status !== 'VERIFIED_CLOSED');
+
+      const countBadge = document.getElementById('supIncidentCountBadge');
+      if (countBadge) {
+        countBadge.textContent = activeIncidents.length > 0 ? `${activeIncidents.length} Aktif Bildirim` : 'Bildirim Yok';
+        countBadge.className = activeIncidents.length > 0
+          ? "text-[10px] bg-rose-600 text-white font-bold px-2 py-0.5 rounded animate-pulse"
+          : "text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded";
+      }
 
       if (activeIncidents.length === 0) {
         hub.innerHTML = `
           <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
-            <span class="flex items-center gap-1.5 font-bold"><i class="fa-solid fa-circle-check text-emerald-600"></i> Bu Mahalde Bekleyen Açık Şikayet Yok</span>
+            <span class="flex items-center gap-1.5 font-bold"><i class="fa-solid fa-circle-check text-emerald-600"></i> Bu Mahalde Bekleyen Açık Şikayet / Kötü Anket Yok</span>
             <span class="text-[10px] text-emerald-600">Standart Operasyon</span>
           </div>
         `;
@@ -1457,7 +1608,7 @@
           card.className = "p-3 bg-rose-50 border-2 border-rose-400 rounded-xl space-y-2";
           card.innerHTML = `
             <div class="flex items-center justify-between text-xs font-bold text-rose-900">
-              <span class="flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation text-rose-600 animate-pulse"></i> YENİ ŞİKAYET (${inc.id})</span>
+              <span class="flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation text-rose-600 animate-pulse"></i> KÖTÜ ANKET BİLDİRİMİ (${inc.id})</span>
               <span class="bg-rose-200 px-2 py-0.5 rounded text-[10px]">${inc.signalCount} Bildirim</span>
             </div>
             <p class="text-xs text-rose-800 font-medium">Tespit Edilen Sorunlar: <strong>${inc.issues.join(', ')}</strong> (${inc.time})</p>
@@ -1483,14 +1634,25 @@
             <p class="text-slate-600 text-[11px]">Sorunlar: ${inc.issues.join(', ')} | Personel sahada müdahale ediyor.</p>
           `;
         } else if (inc.status === 'RESOLVED_BY_STAFF') {
+          const photoThumbHtml = inc.photoUrl ? `
+            <div class="flex items-center gap-2 p-2 bg-white rounded-lg border border-emerald-300">
+              <img src="${inc.photoUrl}" alt="Müdahale Kanıtı" class="w-14 h-14 object-cover rounded-lg cursor-pointer border shadow-sm hover:scale-105 transition" onclick="openPhotoViewer('${inc.photoUrl}')">
+              <div class="text-[11px] text-slate-700">
+                <span class="font-bold text-emerald-800 block"><i class="fa-solid fa-camera text-emerald-600"></i> Personel Kanıt Fotoğrafı Ekledi</span>
+                <button type="button" onclick="openPhotoViewer('${inc.photoUrl}')" class="text-blue-600 hover:underline font-bold text-[10px]">Fotoğrafı Büyüt (Tıkla)</button>
+              </div>
+            </div>
+          ` : '<p class="text-[11px] text-slate-500 italic">Fotoğraf eklenmedi.</p>';
+
           card.className = "p-3 bg-emerald-50 border-2 border-emerald-400 rounded-xl space-y-2 text-xs";
           card.innerHTML = `
             <div class="flex items-center justify-between font-bold text-emerald-900">
               <span class="flex items-center gap-1.5"><i class="fa-solid fa-check-to-slot text-emerald-600"></i> MÜDAHALE TAMAMLANDI - ONAY BEKLİYOR (${inc.id})</span>
-              <span class="bg-emerald-200 px-2 py-0.5 rounded text-[10px]">${inc.resolvedAt}</span>
+              <span class="bg-emerald-200 px-2 py-0.5 rounded text-[10px]">${inc.resolvedAt || ''}</span>
             </div>
             <p class="text-slate-700"><strong>${inc.assignedStaffName}</strong> müdahaleyi tamamladığını beyan etti. Not: <em>${inc.resolutionNote || 'Sorun giderildi'}</em></p>
-            <button onclick="verifyAndCloseIncident('${inc.id}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 px-3 rounded shadow flex items-center justify-center gap-1.5">
+            ${photoThumbHtml}
+            <button onclick="verifyAndCloseIncident('${inc.id}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded shadow flex items-center justify-center gap-1.5">
               <i class="fa-solid fa-stamp"></i> Doğrula ve Olayı Kapat (Verify & Close)
             </button>
           `;
@@ -1511,7 +1673,99 @@
       refreshAllViews();
     }
 
-    function completeStaffIntervention() {
+    
+    let staffPhotoBase64 = null;
+
+    function handleStaffPhotoUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800;
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          staffPhotoBase64 = canvas.toDataURL('image/jpeg', 0.8);
+
+          const previewContainer = document.getElementById('staffPhotoPreviewContainer');
+          const previewImg = document.getElementById('staffPhotoPreviewImg');
+          if (previewImg && previewContainer) {
+            previewImg.src = staffPhotoBase64;
+            previewContainer.classList.remove('hidden');
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearStaffPhoto() {
+      staffPhotoBase64 = null;
+      const fileInput = document.getElementById('staffPhotoInput');
+      if (fileInput) fileInput.value = '';
+      const previewContainer = document.getElementById('staffPhotoPreviewContainer');
+      if (previewContainer) previewContainer.classList.add('hidden');
+    }
+
+    function openPhotoViewer(url) {
+      const modal = document.getElementById('modalPhotoViewer');
+      const img = document.getElementById('modalPhotoViewerImg');
+      if (modal && img) {
+        img.src = url;
+        modal.classList.remove('hidden');
+      }
+    }
+
+    function completeStaffInterventionWithPhoto() {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId);
+      const inc = state.incidents.find(i => i.locationId === curLoc.id && (i.status === 'DISPATCHED' || i.status === 'OPEN'));
+      if (!inc) {
+        alert("Bu mahal için bekleyen atanmış aktif görev bulunamadı.");
+        return;
+      }
+
+      const staffName = state.currentUser ? state.currentUser.fullName : 'Ahmet Yılmaz';
+      const noteInput = document.getElementById('staffInterventionNote');
+      const note = (noteInput && noteInput.value.trim()) || 'Gerekli temizlik ve ikmaller yapıldı, dezenfeksiyon tamamlandı.';
+
+      inc.status = 'RESOLVED_BY_STAFF';
+      inc.resolvedAt = getCurrentTime();
+      inc.assignedStaffName = staffName;
+      inc.resolutionNote = note;
+      if (staffPhotoBase64) {
+        inc.photoUrl = staffPhotoBase64;
+      }
+
+      addAuditLog(inc.locationId, 'PERSONEL_MUDAHALE', staffName, `${inc.id} nolu şikayete müdahale tamamlandı${staffPhotoBase64 ? ' (Fotoğraflı kanıt eklendi)' : ''} ve şefe iletildi.`);
+      saveState();
+      alert("Müdahale başarıyla tamamlandı, fotoğraf eklendi ve Şef onayına gönderildi!");
+      clearStaffPhoto();
+      if (noteInput) noteInput.value = '';
+      refreshAllViews();
+    }
+
+    function openSupervisorAuditModal() {
+      const curLoc = state.locations.find(l => l.id === state.currentLocationId) || state.locations[0];
+      const titleEl = document.getElementById('modalAuditLocTitle');
+      if (titleEl) titleEl.textContent = `${curLoc.name} (${curLoc.code}) - Kalite & Hijyen Denetimi`;
+      document.getElementById('modalSupervisorAudit').classList.remove('hidden');
+    }
+
+function completeStaffIntervention() {
       const curLoc = state.locations.find(l => l.id === state.currentLocationId);
       const inc = state.incidents.find(i => i.locationId === curLoc.id && (i.status === 'DISPATCHED' || i.status === 'OPEN'));
       if (!inc) return;
