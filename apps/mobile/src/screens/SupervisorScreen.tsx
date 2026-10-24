@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -57,13 +58,16 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
   // Assignment modal state
   const [assigningIncident, setAssigningIncident] = useState<Incident | null>(null);
-  const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('');
+  const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('Ahmet Yılmaz');
   const [assigning, setAssigning] = useState(false);
 
   // 3 Primary Action Modals
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [currentCleaningsModalOpen, setCurrentCleaningsModalOpen] = useState(false);
+
+  // In-screen notice banner
+  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
 
   // Audit state
   const [auditAnswers, setAuditAnswers] = useState<Record<number, boolean>>(() => {
@@ -102,7 +106,9 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
         if (status) setSupStatus(status);
       }
     } catch (err: any) {
-      showAlert('Hata', err?.message || 'Veriler yüklenemedi.');
+      const msg = err?.message || 'Veriler yüklenemedi.';
+      setNotice({ text: msg, bad: true });
+      showAlert('Hata', msg);
     } finally {
       setLoading(false);
     }
@@ -118,18 +124,34 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
     }
   }
 
+  function openAssignModal(inc: Incident) {
+    const defaultStaff =
+      selectedStaffToAssign ||
+      (staffUsers.length > 0 ? (staffUsers[0].fullName || staffUsers[0].username) : 'Ahmet Yılmaz');
+    setSelectedStaffToAssign(defaultStaff);
+    setAssigningIncident(inc);
+  }
+
   async function handleAssignStaff() {
-    if (!assigningIncident || !selectedStaffToAssign) return;
+    if (!assigningIncident) return;
+    const staffToUse =
+      selectedStaffToAssign ||
+      (staffUsers.length > 0 ? (staffUsers[0].fullName || staffUsers[0].username) : 'Ahmet Yılmaz');
+
     try {
       setAssigning(true);
-      await assignIncidentApi(assigningIncident.id, selectedStaffToAssign, token);
-      showAlert('Atandı', `Görev başarıyla ${selectedStaffToAssign} personeline iletildi.`);
+      await assignIncidentApi(assigningIncident.id, staffToUse, token);
+      const successMsg = `Görev başarıyla ${staffToUse} personeline iletildi.`;
+      setNotice({ text: `✓ ${successMsg}` });
+      showAlert('Atandı', successMsg);
       setAssigningIncident(null);
       // Refresh incidents
       const incs = await fetchAllIncidentsApi(token);
       setAllIncidents(incs);
     } catch (err: any) {
-      showAlert('Hata', err?.message || 'Personele atama yapılamadı.');
+      const errMsg = err?.message || 'Personele atama yapılamadı.';
+      setNotice({ text: errMsg, bad: true });
+      showAlert('Hata', errMsg);
     } finally {
       setAssigning(false);
     }
@@ -139,27 +161,32 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
     if (!selectedLocation) return;
     try {
       setSubmittingAudit(true);
-      const nonCompliantItems = AUDIT_CHECKLIST_CRITERIA.filter(
-        (_, idx) => !auditAnswers[idx],
-      );
+      const formattedChecklist = AUDIT_CHECKLIST_CRITERIA.map((criterion, idx) => ({
+        id: idx + 1,
+        label: criterion,
+        isOk: auditAnswers[idx] ?? true,
+      }));
+      const nonCompliantItems = formattedChecklist.filter((c) => !c.isOk);
+      const isApproved = nonCompliantItems.length === 0;
 
       await createAuditApi(
         {
           locationId: selectedLocation.id,
-          supervisorName: user.fullName || user.username,
-          items: nonCompliantItems,
+          isApproved,
+          checklist: formattedChecklist,
           note: auditNote.trim() || undefined,
         },
         token,
       );
 
       if (nonCompliantItems.length > 0) {
-        showAlert(
-          'Denetim Tamamlandı',
-          `${nonCompliantItems.length} adet uygunsuzluk tespit edildi ve sahada müdahale edilmesi için personele otomatik görev olarak atandı!`,
-        );
+        const msg = `${nonCompliantItems.length} adet uygunsuzluk tespit edildi ve sahada müdahale edilmesi için personele otomatik görev olarak atandı!`;
+        setNotice({ text: `⚠️ ${msg}`, bad: true });
+        showAlert('Denetim Tamamlandı', msg);
       } else {
-        showAlert('Mükemmel', 'Tüm kriterler uygun olarak denetim onaylandı.');
+        const msg = 'Tüm kriterler uygun olarak denetim onaylandı.';
+        setNotice({ text: `✓ ${msg}` });
+        showAlert('Mükemmel', msg);
       }
 
       setAuditModalOpen(false);
@@ -172,7 +199,9 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       // Refresh data
       await loadAllData();
     } catch (err: any) {
-      showAlert('Hata', err?.message || 'Denetim kaydedilemedi.');
+      const errMsg = err?.message || 'Denetim kaydedilemedi.';
+      setNotice({ text: errMsg, bad: true });
+      showAlert('Hata', errMsg);
     } finally {
       setSubmittingAudit(false);
     }
@@ -218,6 +247,16 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
           <Text style={styles.logoutBtnText}>Çıkış Yap</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Visual in-screen status banner */}
+      {notice && (
+        <View style={[styles.noticeBox, notice.bad ? styles.noticeBoxBad : styles.noticeBoxGood]}>
+          <Text style={styles.noticeText}>{notice.text}</Text>
+          <TouchableOpacity onPress={() => setNotice(null)}>
+            <Text style={styles.noticeClose}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* TOP SECTION: Multi-WC Incident Notification Hub */}
@@ -417,7 +456,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
                         </Text>
                         <TouchableOpacity
                           style={styles.reassignBtn}
-                          onPress={() => setAssigningIncident(inc)}
+                          onPress={() => openAssignModal(inc)}
                         >
                           <Text style={styles.reassignBtnText}>Değiştir</Text>
                         </TouchableOpacity>
@@ -425,7 +464,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
                     ) : (
                       <TouchableOpacity
                         style={styles.assignActionBtn}
-                        onPress={() => setAssigningIncident(inc)}
+                        onPress={() => openAssignModal(inc)}
                       >
                         <Text style={styles.assignActionBtnText}>👉 Personele Görev Olarak Ata</Text>
                       </TouchableOpacity>
@@ -1205,11 +1244,55 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginLeft: 8,
   },
+  noticeBox: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+  },
+  noticeBoxGood: {
+    backgroundColor: '#064e3b',
+    borderColor: '#10b981',
+  },
+  noticeBoxBad: {
+    backgroundColor: '#7f1d1d',
+    borderColor: '#ef4444',
+  },
+  noticeText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  noticeClose: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '900',
+    padding: 4,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
+    ...Platform.select({
+      web: {
+        position: 'fixed' as any,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 99999,
+      },
+    }),
   },
   modalCard: {
     backgroundColor: '#1e293b',
@@ -1217,6 +1300,14 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: '#334155',
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    ...Platform.select({
+      web: {
+        maxHeight: '90vh' as any,
+      },
+    }),
   },
   modalHeading: {
     fontSize: 18,

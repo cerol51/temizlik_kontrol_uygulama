@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -62,6 +63,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
   // Info modals
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [pastCleaningsModalOpen, setPastCleaningsModalOpen] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
 
   useEffect(() => {
     loadInitialData();
@@ -78,7 +80,9 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         await refreshLocationData(first.id);
       }
     } catch (err: any) {
-      showAlert('Hata', err?.message || 'Veriler yüklenemedi.');
+      const msg = err?.message || 'Veriler yüklenemedi.';
+      setNotice({ text: msg, bad: true });
+      showAlert('Hata', msg);
     } finally {
       setLoading(false);
     }
@@ -148,7 +152,9 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     if (!selectedLocation) return;
     const allChecked = Object.values(checklistValues).every(Boolean);
     if (!allChecked) {
-      showAlert('Eksik Madde', 'Lütfen rutin temizlik adımlarının tamamını onaylayınız.');
+      const msg = 'Lütfen rutin temizlik adımlarının tamamını onaylayınız.';
+      setNotice({ text: msg, bad: true });
+      showAlert('Eksik Madde', msg);
       return;
     }
 
@@ -164,14 +170,18 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         token,
       );
 
-      showAlert('Başarılı', 'Rutin temizlik başarıyla kaydedildi.');
+      const successMsg = `Rutin temizlik başarıyla kaydedildi (${selectedLocation.name}).`;
+      setNotice({ text: `✓ ${successMsg}` });
+      showAlert('Başarılı', successMsg);
       setCleaningModalOpen(false);
       setCleaningNote('');
       if (selectedLocation) {
         await refreshLocationData(selectedLocation.id);
       }
     } catch (err: any) {
-      showAlert('Hata', err?.message || 'Temizlik kaydedilemedi.');
+      const errMsg = err?.message || 'Temizlik kaydedilemedi.';
+      setNotice({ text: errMsg, bad: true });
+      showAlert('Hata', errMsg);
     } finally {
       setSubmittingCleaning(false);
     }
@@ -188,7 +198,9 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         token,
       );
 
-      showAlert('Tamamlandı', 'Müdahale başarıyla tamamlandı ve şefe iletildi.');
+      const msg = 'Müdahale başarıyla tamamlandı ve nöbetçi şefe iletildi.';
+      setNotice({ text: `✓ ${msg}` });
+      showAlert('Tamamlandı', msg);
       setActiveIncidentToResolve(null);
       setResolutionNote('');
       setPhotoBase64(null);
@@ -196,7 +208,9 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         await refreshLocationData(selectedLocation.id);
       }
     } catch (err: any) {
-      showAlert('Hata', err?.message || 'Görev kapatılamadı.');
+      const errMsg = err?.message || 'Görev kapatılamadı.';
+      setNotice({ text: errMsg, bad: true });
+      showAlert('Hata', errMsg);
     } finally {
       setResolving(false);
     }
@@ -219,6 +233,16 @@ export function StaffScreen({ user, token, onLogout }: Props) {
           <Text style={styles.logoutBtnText}>Çıkış Yap</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Visual in-screen status banner */}
+      {notice && (
+        <View style={[styles.noticeBox, notice.bad ? styles.noticeBoxBad : styles.noticeBoxGood]}>
+          <Text style={styles.noticeText}>{notice.text}</Text>
+          <TouchableOpacity onPress={() => setNotice(null)}>
+            <Text style={styles.noticeClose}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Selected Restroom info bar */}
@@ -827,11 +851,55 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  noticeBox: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+  },
+  noticeBoxGood: {
+    backgroundColor: '#064e3b',
+    borderColor: '#10b981',
+  },
+  noticeBoxBad: {
+    backgroundColor: '#7f1d1d',
+    borderColor: '#ef4444',
+  },
+  noticeText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  noticeClose: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '900',
+    padding: 4,
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
+    ...Platform.select({
+      web: {
+        position: 'fixed' as any,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 99999,
+      },
+    }),
   },
   modalCard: {
     backgroundColor: '#1e293b',
@@ -839,6 +907,14 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: '#334155',
+    width: '100%',
+    maxWidth: 500,
+    alignSelf: 'center',
+    ...Platform.select({
+      web: {
+        maxHeight: '90vh' as any,
+      },
+    }),
   },
   modalHeading: {
     fontSize: 18,

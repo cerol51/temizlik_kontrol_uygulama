@@ -9,34 +9,27 @@ import {
   SupervisorLocationStatus,
 } from './types';
 
-// Dynamic default API URL based on host/platform
 function getDefaultApiUrl(): string {
-  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
-    const host = window.location.hostname;
-    // When opened from phone via 192.168.1.106, use that host for backend API port 3000!
-    return `http://${host}:3000/api`;
+  if (typeof window !== 'undefined' && window.location) {
+    // In web browser (iPhone Safari, desktop Chrome, tunnel), use relative /api
+    // which proxies through Metro directly to the NestJS backend on port 3000!
+    return '/api';
   }
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:3000/api';
   }
-  // iOS Expo Go or device default LAN IP
   return 'http://192.168.1.106:3000/api';
 }
 
 const STORAGE_API_KEY = 'wc_mobile_api_url';
 let currentApiBaseUrl = getDefaultApiUrl();
 
-// Initialize from storage with sensible remote host override
+// Initialize from storage
 AsyncStorage.getItem(STORAGE_API_KEY).then((saved) => {
   if (saved) {
-    if (
-      typeof window !== 'undefined' &&
-      window.location?.hostname &&
-      window.location.hostname !== 'localhost' &&
-      saved.includes('localhost')
-    ) {
-      currentApiBaseUrl = getDefaultApiUrl();
-      AsyncStorage.setItem(STORAGE_API_KEY, currentApiBaseUrl);
+    // In web, always prefer /api proxy to avoid CORS/mixed-content issues
+    if (typeof window !== 'undefined') {
+      currentApiBaseUrl = '/api';
     } else {
       currentApiBaseUrl = saved;
     }
@@ -67,7 +60,13 @@ export async function apiRequest<T>(
   token?: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const url = `${currentApiBaseUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  let base = currentApiBaseUrl.replace(/\/+$/, '');
+  if (!base.endsWith('/api') && !cleanEndpoint.startsWith('/api') && base !== '') {
+    base = `${base}/api`;
+  }
+  const url = `${base}${cleanEndpoint}`;
+
   try {
     const response = await fetch(url, {
       ...init,
@@ -93,7 +92,7 @@ export async function apiRequest<T>(
     return response.json() as Promise<T>;
   } catch (err: any) {
     if (err.name === 'TypeError' || err.message?.includes('fetch') || err.message?.includes('Network')) {
-      throw new Error(`API sunucusuna bağlanılamadı (${url}). Lütfen bilgisayar ve telefonun aynı Wi-Fi ağında olduğunu kontrol ediniz.`);
+      throw new Error(`API sunucusuna bağlanılamadı (${url}). Lütfen bağlantınızı kontrol ediniz.`);
     }
     throw err;
   }
@@ -142,36 +141,38 @@ export async function fetchAllIncidentsApi(token: string): Promise<Incident[]> {
   return dashboard.allIncidents || [];
 }
 
+// 4. Şef Olay Görevlendirme (Dispatch) -> POST /incidents/:id/dispatch
 export async function assignIncidentApi(
   incidentId: string,
   staffName: string,
   token: string,
 ): Promise<Incident> {
-  return apiRequest<Incident>(`/incidents/${incidentId}/status`, token, {
-    method: 'PATCH',
+  return apiRequest<Incident>(`/incidents/${incidentId}/dispatch`, token, {
+    method: 'POST',
     body: JSON.stringify({
-      status: 'DISPATCHED',
       assignedStaffName: staffName,
+      assignedStaffId: 'staff-assigned',
     }),
   });
 }
 
+// 5. Personel Müdahale Çözme -> POST /incidents/:id/staff-resolve
 export async function resolveIncidentApi(
   incidentId: string,
   resolutionNote?: string,
   photoUrl?: string,
   token?: string,
 ): Promise<Incident> {
-  return apiRequest<Incident>(`/incidents/${incidentId}/status`, token, {
-    method: 'PATCH',
+  return apiRequest<Incident>(`/incidents/${incidentId}/staff-resolve`, token, {
+    method: 'POST',
     body: JSON.stringify({
-      status: 'RESOLVED_BY_STAFF',
-      resolutionNote: resolutionNote || 'Görev personel tarafından sahada tamamlandı.',
+      note: resolutionNote || 'Görev personel tarafından sahada tamamlandı.',
       photoUrl,
     }),
   });
 }
 
+// 1. Personel Temizlik Kaydı -> POST /locations/:id/cleanings
 export async function createCleaningApi(
   data: {
     locationId: string;
@@ -181,25 +182,33 @@ export async function createCleaningApi(
   },
   token: string,
 ): Promise<any> {
-  return apiRequest('/cleanings', token, {
+  return apiRequest(`/locations/${data.locationId}/cleanings`, token, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      tasksConfirmed: true,
+      note: data.note || 'Rutin temizlik tamamlandı.',
+    }),
   });
 }
 
+// 2. Şef Sürümlü Denetim (Checklist v1.2) -> POST /locations/:id/audits
 export async function createAuditApi(
   data: {
     locationId: string;
-    supervisorName: string;
-    items?: string[];
-    checklistAnswers?: Record<string, boolean>;
+    isApproved: boolean;
+    checklist: Array<{ id: number; label: string; isOk: boolean }>;
     note?: string;
   },
   token: string,
 ): Promise<any> {
-  return apiRequest('/audits', token, {
+  return apiRequest(`/locations/${data.locationId}/audits`, token, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      isApproved: data.isApproved,
+      checklist: data.checklist,
+      note: data.note?.trim() || (data.isApproved ? 'Eksiksiz onaylandı.' : 'Uygunsuzluk tespit edildi.'),
+      templateVersion: 'v1.2',
+    }),
   });
 }
 

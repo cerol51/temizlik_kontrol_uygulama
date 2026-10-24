@@ -67,6 +67,20 @@ export class SeedService implements OnModuleInit {
           passwordHash: await hashPassword('mehmet123'),
           role: 'employee' as const,
         },
+        {
+          id: '1e9ad2f0-c4c1-4d26-a081-22f873e68506',
+          fullName: 'Nöbetçi Denetim Şefi',
+          username: 'sef',
+          passwordHash: await hashPassword('sef123'),
+          role: 'supervisor' as const,
+        },
+        {
+          id: '1e9ad2f0-c4c1-4d26-a081-22f873e68507',
+          fullName: 'Saha Temizlik Personeli',
+          username: 'personel',
+          passwordHash: await hashPassword('personel123'),
+          role: 'employee' as const,
+        },
       ];
 
       for (const u of initialUsers) {
