@@ -104,6 +104,12 @@ export default function App() {
   const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
   const [surveySent, setSurveySent] = useState(false);
   const [guestScheduleOpen, setGuestScheduleOpen] = useState(false);
+  const [previewGuestMode, setPreviewGuestMode] = useState(false);
+  const isDirectQrVisit = typeof window !== 'undefined' && (
+    window.location.pathname.startsWith('/q/') ||
+    window.location.search.includes('q=') ||
+    window.location.search.includes('wc=')
+  );
 
   // Personel state
   const [task1, setTask1] = useState(true);
@@ -842,6 +848,28 @@ export default function App() {
     }
   };
 
+  // 12b. Hızlı Sistem Yöneticisi (Admin) Girişi
+  const handleQuickAdminLogin = async () => {
+    try {
+      setBusy(true);
+      const res = await loginApi('admin', 'admin123');
+      setCurrentUser(res.user);
+      setAuthToken(res.token);
+      localStorage.setItem('wc_user', JSON.stringify(res.user));
+      localStorage.setItem('wc_token', res.token);
+      setRole('admin');
+      setActiveTab('admin');
+      setNotice({ text: '👑 Sistem Yöneticisi olarak başarıyla giriş yapıldı.' });
+      void loadStatus();
+      void loadDashboard();
+      void loadUsers();
+    } catch (err: any) {
+      setNotice({ text: err.message, bad: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // 13. Çıkış Yap
   const handleLogout = () => {
     setCurrentUser(null);
@@ -941,35 +969,17 @@ export default function App() {
       {/* ÜST ÇUBUK / NAVİGASYON */}
       <header className="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-          {/* 1. MİSAFİR MODUNDA HEADER */}
+          {/* 1. SİSTEM YÖNETİCİSİ GİRİŞ / MİSAFİR HEADER */}
           {!role && (
             <>
               <div className="flex items-center gap-2">
-                <span className="text-teal-400 font-black text-sm flex items-center gap-1.5">
-                  <i className="fa-solid fa-restroom"></i> Akıllı WC Memnuniyet Anketi
+                <span className="text-amber-400 font-black text-sm flex items-center gap-1.5">
+                  <i className="fa-solid fa-desktop"></i> Sistem Yöneticisi Merkezi (Desktop)
                 </span>
                 <span className="text-slate-500 hidden sm:inline">|</span>
-                <span className="text-slate-400 font-medium flex items-center gap-1">
-                  <i className="fa-solid fa-location-dot"></i> Mahal:
+                <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[11px] hidden md:inline">
+                  📱 Saha ekranları mobil uygulamada (@wc/mobile)
                 </span>
-                <select
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                  className="bg-slate-800 text-amber-400 font-semibold px-2 py-1 rounded border border-slate-700 text-xs focus:ring-1 focus:ring-amber-400 outline-none"
-                >
-                  {locations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name} ({loc.code})
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => setScannerOpen(!scannerOpen)}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700 text-xs"
-                  title="Kamera ile QR Tara"
-                >
-                  <i className="fa-solid fa-camera"></i> QR Tara
-                </button>
               </div>
 
               <div className="flex items-center gap-2">
@@ -977,14 +987,12 @@ export default function App() {
                   {currentTime}
                 </span>
                 <button
-                  onClick={() => {
-                    setAuthTab('login');
-                    setAuthModalOpen(true);
-                  }}
-                  className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1.5 transition"
-                  title="Personel veya Şef Girişi Yap"
+                  onClick={handleQuickAdminLogin}
+                  disabled={busy}
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1.5 transition"
+                  title="Yönetici Olarak Hızlı Giriş Yap"
                 >
-                  <i className="fa-solid fa-right-to-bracket"></i> Personel / Şef Girişi
+                  <i className="fa-solid fa-crown"></i> Admin Girişi
                 </button>
               </div>
             </>
@@ -1064,7 +1072,7 @@ export default function App() {
             <>
               <div className="flex items-center gap-2">
                 <span className="text-amber-400 font-black text-sm flex items-center gap-1.5">
-                  <i className="fa-solid fa-crown"></i> Yönetim Portalı (Admin)
+                  <i className="fa-solid fa-crown"></i> Sistem Yöneticisi Portalı (Desktop)
                 </span>
                 <button
                   onClick={() => setAdminModalOpen(true)}
@@ -1146,6 +1154,23 @@ export default function App() {
         </nav>
       )}
 
+      {/* SAHA MOBİL UYGULAMASI BİLGİLENDİRME ŞERİDİ */}
+      {role === 'admin' && (
+        <div className="max-w-6xl mx-auto w-full px-4 pt-3">
+          <div className="bg-blue-900/30 border border-blue-500/30 text-blue-200 px-4 py-2.5 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2 shadow-sm">
+            <div className="flex items-center gap-2">
+              <i className="fa-solid fa-mobile-screen text-blue-400 text-base"></i>
+              <span>
+                <strong>Saha Mimarisi:</strong> Anket girişi, personel görev ekranı ve şef denetimi saha kullanımı için <strong>Mobil Uygulamaya (<code className="bg-blue-950 px-1 py-0.5 rounded text-blue-300">@wc/mobile</code>)</strong> taşınmıştır. Sistem yönetimi, analitikler ve raporlar bu masaüstü portalından yürütülür.
+              </span>
+            </div>
+            <span className="bg-blue-600/30 text-blue-300 px-2 py-0.5 rounded text-[10px] font-bold border border-blue-400/30">
+              Masaüstü Portalı Aktif
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* KAMERA SCANNER ALANI */}
       {scannerOpen && (
         <div className="max-w-md mx-auto my-3 p-4 bg-slate-900 rounded-2xl shadow-2xl text-center text-white">
@@ -1176,9 +1201,129 @@ export default function App() {
 
       {/* ANA İÇERİK ALANI */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col items-center justify-start gap-6">
-        {/* ROL GÖRÜNÜMÜ: MİSAFİR EKRANI */}
-        {activeTab === 'guest' && (
+        {/* ROL GÖRÜNÜMÜ: MASAÜSTÜ YÖNETİCİ GİRİŞ PANELİ VEYA MİSAFİR ANKETİ */}
+        {activeTab === 'guest' && !isDirectQrVisit && !previewGuestMode ? (
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col my-4">
+            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 border-b border-slate-800">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-3xl">
+                  👑
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500/30 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-400/30">
+                    Masaüstü Portalı (Desktop Web)
+                  </span>
+                  <h1 className="text-2xl font-black mt-1">Sistem Yöneticisi Merkezi</h1>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Operasyonel Analitik, Lokasyonlar, Vardiyalar & Denetim İzi Yönetimi
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* SAHA MOBİL UYGULAMASI BİLGİLENDİRME KUTUSU */}
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xl shrink-0 mt-0.5">
+                    📱
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-black text-blue-950">
+                      Saha Operasyonları Mobil Uygulamaya Taşındı
+                    </h3>
+                    <p className="text-xs text-blue-900 leading-relaxed">
+                      Saha kullanım standartları gereğince <strong>Ziyaretçi Anket Girişi</strong>, <strong>Personel Görev & Checklist Ekranı</strong> ve <strong>Nöbetçi Şef Denetim & Olay Atama Ekranı</strong> bağımsız <code className="bg-blue-200/80 text-blue-950 font-bold px-1.5 py-0.5 rounded">@wc/mobile</code> (React Native / Expo) uygulamasına taşınmıştır.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-blue-200 text-xs">
+                  <div className="bg-white p-2.5 rounded-xl border border-blue-100 flex items-center gap-2">
+                    <span className="text-base">📋</span>
+                    <div>
+                      <div className="font-bold text-slate-800">Anket Terminali</div>
+                      <div className="text-[10px] text-slate-500">Kiosk & Saha Tableti</div>
+                    </div>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-blue-100 flex items-center gap-2">
+                    <span className="text-base">🧹</span>
+                    <div>
+                      <div className="font-bold text-slate-800">Personel Ekranı</div>
+                      <div className="text-[10px] text-slate-500">Checklist & Fotoğraflı Çözüm</div>
+                    </div>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-blue-100 flex items-center gap-2">
+                    <span className="text-base">👔</span>
+                    <div>
+                      <div className="font-bold text-slate-800">Şef Portalı</div>
+                      <div className="text-[10px] text-slate-500">Olay Merkezi & 3 Buton</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ADMIN GİRİŞ EYLEMLERİ */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                    Sistem Yöneticisi Girişi
+                  </h3>
+                  <span className="text-[11px] text-slate-500 font-mono">admin / admin123</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleQuickAdminLogin}
+                  disabled={busy}
+                  className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-amber-600/20 active:scale-[0.99] transition flex items-center justify-center gap-2 text-sm"
+                >
+                  <i className="fa-solid fa-crown text-amber-200"></i>
+                  Sistem Yöneticisi Olarak Giriş Yap (Admin)
+                </button>
+
+                <div className="flex items-center justify-center gap-2 text-xs text-slate-500 pt-2">
+                  <span>veya diğer hesapla giriş yapmak için</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthTab('login');
+                      setAuthModalOpen(true);
+                    }}
+                    className="text-indigo-600 hover:text-indigo-800 font-bold underline"
+                  >
+                    Giriş Penceresini Aç
+                  </button>
+                </div>
+              </div>
+
+              {/* MASAÜSTÜNDE SAHA SİMÜLASYONU / ÖNİZLEME */}
+              <div className="border-t border-slate-200 pt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span>Masaüstünde saha anket görünümünü test etmek ister misiniz?</span>
+                <button
+                  type="button"
+                  onClick={() => setPreviewGuestMode(true)}
+                  className="text-teal-700 hover:text-teal-900 font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-50 border border-teal-200 hover:bg-teal-100 transition"
+                >
+                  <i className="fa-solid fa-mobile-screen"></i>
+                  Saha Anket Ekranını Masaüstünde Önizle
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'guest' && (
           <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+            {previewGuestMode && (
+              <div className="bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2 text-xs flex justify-between items-center">
+                <span><strong>Önizleme Modu:</strong> Ziyaretçi anket ekranı önizlenmektedir.</span>
+                <button
+                  onClick={() => setPreviewGuestMode(false)}
+                  className="text-amber-950 font-bold underline ml-2"
+                >
+                  Yönetici Paneline Dön
+                </button>
+              </div>
+            )}
             <div className="bg-gradient-to-r from-teal-600 to-emerald-700 text-white p-5 text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 bg-white/20 rounded-full mb-2">
                 <i className="fa-solid fa-restroom text-2xl"></i>
