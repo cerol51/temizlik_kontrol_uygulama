@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   ScrollView,
@@ -19,6 +18,7 @@ import {
   fetchStaffUsersApi,
   fetchSupervisorStatusApi,
   formatTime,
+  showAlert,
 } from '../api';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
 
@@ -102,7 +102,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
         if (status) setSupStatus(status);
       }
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Veriler yüklenemedi.');
+      showAlert('Hata', err?.message || 'Veriler yüklenemedi.');
     } finally {
       setLoading(false);
     }
@@ -123,13 +123,13 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
     try {
       setAssigning(true);
       await assignIncidentApi(assigningIncident.id, selectedStaffToAssign, token);
-      Alert.alert('Atandı', `Görev başarıyla ${selectedStaffToAssign} personeline iletildi.`);
+      showAlert('Atandı', `Görev başarıyla ${selectedStaffToAssign} personeline iletildi.`);
       setAssigningIncident(null);
       // Refresh incidents
       const incs = await fetchAllIncidentsApi(token);
       setAllIncidents(incs);
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Personele atama yapılamadı.');
+      showAlert('Hata', err?.message || 'Personele atama yapılamadı.');
     } finally {
       setAssigning(false);
     }
@@ -154,12 +154,12 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       );
 
       if (nonCompliantItems.length > 0) {
-        Alert.alert(
+        showAlert(
           'Denetim Tamamlandı',
           `${nonCompliantItems.length} adet uygunsuzluk tespit edildi ve sahada müdahale edilmesi için personele otomatik görev olarak atandı!`,
         );
       } else {
-        Alert.alert('Mükemmel', 'Tüm kriterler uygun olarak denetim onaylandı.');
+        showAlert('Mükemmel', 'Tüm kriterler uygun olarak denetim onaylandı.');
       }
 
       setAuditModalOpen(false);
@@ -172,7 +172,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       // Refresh data
       await loadAllData();
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Denetim kaydedilemedi.');
+      showAlert('Hata', err?.message || 'Denetim kaydedilemedi.');
     } finally {
       setSubmittingAudit(false);
     }

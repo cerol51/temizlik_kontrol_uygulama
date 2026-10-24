@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import {
   AppUser,
   AuthResponse,
@@ -9,18 +9,38 @@ import {
   SupervisorLocationStatus,
 } from './types';
 
-// Default host based on platform
-const DEFAULT_URL =
-  Platform.OS === 'android'
-    ? 'http://10.0.2.2:3000/api'
-    : 'http://localhost:3000/api';
+// Dynamic default API URL based on host/platform
+function getDefaultApiUrl(): string {
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    const host = window.location.hostname;
+    // When opened from phone via 192.168.1.106, use that host for backend API port 3000!
+    return `http://${host}:3000/api`;
+  }
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3000/api';
+  }
+  // iOS Expo Go or device default LAN IP
+  return 'http://192.168.1.106:3000/api';
+}
 
 const STORAGE_API_KEY = 'wc_mobile_api_url';
-let currentApiBaseUrl = DEFAULT_URL;
+let currentApiBaseUrl = getDefaultApiUrl();
 
-// Initialize from storage
+// Initialize from storage with sensible remote host override
 AsyncStorage.getItem(STORAGE_API_KEY).then((saved) => {
-  if (saved) currentApiBaseUrl = saved;
+  if (saved) {
+    if (
+      typeof window !== 'undefined' &&
+      window.location?.hostname &&
+      window.location.hostname !== 'localhost' &&
+      saved.includes('localhost')
+    ) {
+      currentApiBaseUrl = getDefaultApiUrl();
+      AsyncStorage.setItem(STORAGE_API_KEY, currentApiBaseUrl);
+    } else {
+      currentApiBaseUrl = saved;
+    }
+  }
 });
 
 export function getApiBaseUrl(): string {
@@ -33,34 +53,50 @@ export async function setApiBaseUrl(url: string): Promise<void> {
   await AsyncStorage.setItem(STORAGE_API_KEY, trimmed);
 }
 
+export function showAlert(title: string, message: string, onOk?: () => void) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title ? title + ': ' : ''}${message}`);
+    if (onOk) onOk();
+  } else {
+    Alert.alert(title, message, onOk ? [{ text: 'Tamam', onPress: onOk }] : undefined);
+  }
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   token?: string,
   init: RequestInit = {},
 ): Promise<T> {
   const url = `${currentApiBaseUrl}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
+  try {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
+    });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    const message =
-      typeof body?.message === 'string'
-        ? body.message
-        : Array.isArray(body?.message)
-          ? body.message.join(', ')
-          : `İstek başarısız (${response.status}).`;
-    throw new Error(message);
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      const message =
+        typeof body?.message === 'string'
+          ? body.message
+          : Array.isArray(body?.message)
+            ? body.message.join(', ')
+            : `İstek başarısız (${response.status}).`;
+      throw new Error(message);
+    }
+
+    if (response.status === 204) return undefined as unknown as T;
+    return response.json() as Promise<T>;
+  } catch (err: any) {
+    if (err.name === 'TypeError' || err.message?.includes('fetch') || err.message?.includes('Network')) {
+      throw new Error(`API sunucusuna bağlanılamadı (${url}). Lütfen bilgisayar ve telefonun aynı Wi-Fi ağında olduğunu kontrol ediniz.`);
+    }
+    throw err;
   }
-
-  if (response.status === 204) return undefined as unknown as T;
-  return response.json() as Promise<T>;
 }
 
 export async function loginApi(username: string, password: string): Promise<AuthResponse> {

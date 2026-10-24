@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   ScrollView,
@@ -19,6 +18,7 @@ import {
   fetchSupervisorStatusApi,
   formatTime,
   resolveIncidentApi,
+  showAlert,
 } from '../api';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
 
@@ -78,7 +78,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         await refreshLocationData(first.id);
       }
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Veriler yüklenemedi.');
+      showAlert('Hata', err?.message || 'Veriler yüklenemedi.');
     } finally {
       setLoading(false);
     }
@@ -101,7 +101,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert('İzin Gerekli', 'Fotoğraf yükleyebilmek için galeri erişim izni vermelisiniz.');
+        showAlert('İzin Gerekli', 'Fotoğraf yükleyebilmek için galeri erişim izni vermelisiniz.');
         return;
       }
 
@@ -117,7 +117,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         setPhotoBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
       }
     } catch (err: any) {
-      Alert.alert('Fotoğraf Hatası', err?.message || 'Fotoğraf seçilemedi.');
+      showAlert('Fotoğraf Hatası', err?.message || 'Fotoğraf seçilemedi.');
     }
   }
 
@@ -125,7 +125,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     try {
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
       if (!permissionResult.granted) {
-        Alert.alert('İzin Gerekli', 'Fotoğraf çekebilmek için kamera izni vermelisiniz.');
+        showAlert('İzin Gerekli', 'Fotoğraf çekebilmek için kamera izni vermelisiniz.');
         return;
       }
 
@@ -140,7 +140,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         setPhotoBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
       }
     } catch (err: any) {
-      Alert.alert('Kamera Hatası', err?.message || 'Kamera açılamadı.');
+      showAlert('Kamera Hatası', err?.message || 'Kamera açılamadı.');
     }
   }
 
@@ -148,7 +148,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     if (!selectedLocation) return;
     const allChecked = Object.values(checklistValues).every(Boolean);
     if (!allChecked) {
-      Alert.alert('Eksik Madde', 'Lütfen rutin temizlik adımlarının tamamını onaylayınız.');
+      showAlert('Eksik Madde', 'Lütfen rutin temizlik adımlarının tamamını onaylayınız.');
       return;
     }
 
@@ -164,14 +164,14 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         token,
       );
 
-      Alert.alert('Başarılı', 'Rutin temizlik başarıyla kaydedildi.');
+      showAlert('Başarılı', 'Rutin temizlik başarıyla kaydedildi.');
       setCleaningModalOpen(false);
       setCleaningNote('');
       if (selectedLocation) {
         await refreshLocationData(selectedLocation.id);
       }
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Temizlik kaydedilemedi.');
+      showAlert('Hata', err?.message || 'Temizlik kaydedilemedi.');
     } finally {
       setSubmittingCleaning(false);
     }
@@ -188,7 +188,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         token,
       );
 
-      Alert.alert('Tamamlandı', 'Müdahale başarıyla tamamlandı ve şefe iletildi.');
+      showAlert('Tamamlandı', 'Müdahale başarıyla tamamlandı ve şefe iletildi.');
       setActiveIncidentToResolve(null);
       setResolutionNote('');
       setPhotoBase64(null);
@@ -196,7 +196,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         await refreshLocationData(selectedLocation.id);
       }
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Görev kapatılamadı.');
+      showAlert('Hata', err?.message || 'Görev kapatılamadı.');
     } finally {
       setResolving(false);
     }

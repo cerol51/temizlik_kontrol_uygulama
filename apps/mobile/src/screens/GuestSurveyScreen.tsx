@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -10,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { fetchLocationsApi, fetchPublicStatusApi, formatTime, submitSurveyApi } from '../api';
+import { fetchLocationsApi, fetchPublicStatusApi, formatTime, getApiBaseUrl, showAlert, submitSurveyApi } from '../api';
 import { Location, PublicLocationStatus } from '../types';
 
 const ROOT_CAUSES = [
@@ -55,7 +54,7 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
         setSelectedLocation(locs[0]);
       }
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Lokasyonlar yüklenemedi.');
+      showAlert('Bağlantı Hatası', err?.message || 'Lokasyonlar yüklenemedi.');
     } finally {
       setLoading(false);
     }
@@ -67,7 +66,7 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
       setPublicStatus(data);
       setStatusModalOpen(true);
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Durum bilgisi alınamadı.');
+      showAlert('Hata', err?.message || 'Durum bilgisi alınamadı.');
     }
   }
 
@@ -81,15 +80,15 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
 
   async function handleSubmit() {
     if (!selectedLocation) {
-      Alert.alert('Uyarı', 'Lütfen bir lavabo seçiniz.');
+      showAlert('Uyarı', 'Lütfen önce yukarıdan bir lavabo seçiniz.');
       return;
     }
     if (!rating) {
-      Alert.alert('Uyarı', 'Lütfen memnuniyet durumunuzu seçiniz.');
+      showAlert('Uyarı', 'Lütfen memnuniyet durumunuzu seçiniz.');
       return;
     }
     if ((rating === 'bad' || rating === 'fair') && selectedIssues.length === 0 && !note.trim()) {
-      Alert.alert('Bilgi', 'Hızlı müdahale edebilmemiz için lütfen en az bir sebep seçiniz.');
+      showAlert('Bilgi', 'Hızlı müdahale edebilmemiz için lütfen en az bir sebep seçiniz.');
       return;
     }
 
@@ -111,7 +110,7 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
         resetForm();
       }, 4000);
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Anket gönderilemedi.');
+      showAlert('Gönderim Hatası', err?.message || 'Anket iletilemedi.');
     } finally {
       setSubmitting(false);
     }
@@ -140,6 +139,24 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Error retry banner if locations empty */}
+        {locations.length === 0 && !loading && (
+          <View style={{ backgroundColor: '#1e293b', padding: 14, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#ef4444', alignItems: 'center' }}>
+            <Text style={{ color: '#f87171', fontSize: 13, fontWeight: '700', marginBottom: 4 }}>
+              Lavabo listesi alınamadı
+            </Text>
+            <Text style={{ color: '#94a3b8', fontSize: 11, textAlign: 'center', marginBottom: 10 }}>
+              Sunucu adresi: {getApiBaseUrl()}
+            </Text>
+            <TouchableOpacity
+              onPress={loadLocations}
+              style={{ backgroundColor: '#0284c7', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 12 }}>Tekrar Bağlan ↻</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Location selector pills */}
         <View style={styles.locSection}>
           <Text style={styles.sectionLabel}>LAVABO / ALAN SEÇİMİ:</Text>

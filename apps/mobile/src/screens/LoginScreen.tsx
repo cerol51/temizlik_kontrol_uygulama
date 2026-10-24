@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   StyleSheet,
   Text,
@@ -9,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getApiBaseUrl, loginApi, setApiBaseUrl } from '../api';
+import { getApiBaseUrl, loginApi, setApiBaseUrl , showAlert } from '../api';
 import { AppUser } from '../types';
 
 interface Props {
@@ -34,7 +33,7 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
     const u = userParam || username;
     const p = passParam || password;
     if (!u.trim() || !p.trim()) {
-      Alert.alert('Eksik Bilgi', 'Kullanıcı adı ve şifre gereklidir.');
+      showAlert('Eksik Bilgi', 'Kullanıcı adı ve şifre gereklidir.');
       return;
     }
 
@@ -43,7 +42,7 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
       const res = await loginApi(u.trim(), p.trim());
       onLoginSuccess(res.user, res.token);
     } catch (err: any) {
-      Alert.alert(
+      showAlert(
         'Giriş Başarısız',
         err?.message || 'Sunucuya bağlanılamadı. Lütfen sunucu adresini kontrol edin.',
       );
@@ -56,10 +55,10 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
     if (!customServerUrl.trim()) return;
     try {
       await setApiBaseUrl(customServerUrl.trim());
-      Alert.alert('Kaydedildi', `Sunucu adresi güncellendi: ${customServerUrl.trim()}`);
+      showAlert('Kaydedildi', `Sunucu adresi güncellendi: ${customServerUrl.trim()}`);
       setSettingsModalOpen(false);
     } catch (err: any) {
-      Alert.alert('Hata', err?.message || 'Sunucu adresi kaydedilemedi.');
+      showAlert('Hata', err?.message || 'Sunucu adresi kaydedilemedi.');
     }
   }
 
@@ -187,6 +186,12 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
             <View style={styles.presetRow}>
               <TouchableOpacity
                 style={styles.presetBtn}
+                onPress={() => setCustomServerUrl('http://192.168.1.106:3000/api')}
+              >
+                <Text style={styles.presetBtnText}>Wi-Fi (192.168.1.106)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetBtn}
                 onPress={() => setCustomServerUrl('http://localhost:3000/api')}
               >
                 <Text style={styles.presetBtnText}>Localhost</Text>
@@ -195,7 +200,7 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
                 style={styles.presetBtn}
                 onPress={() => setCustomServerUrl('http://10.0.2.2:3000/api')}
               >
-                <Text style={styles.presetBtnText}>Android Emülatör</Text>
+                <Text style={styles.presetBtnText}>Android</Text>
               </TouchableOpacity>
             </View>
 
