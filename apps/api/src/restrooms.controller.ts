@@ -345,9 +345,13 @@ export class RestroomsController implements OnModuleDestroy {
       }),
     ]);
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayCleanings = cleanings.filter((c) => new Date(c.createdAt) >= startOfToday);
+
     const dailyScheduleStatus = evaluateDailySchedule(
       location.schedule,
-      cleanings,
+      todayCleanings,
       location.toleranceMinutes,
     );
 
@@ -573,7 +577,12 @@ export class RestroomsController implements OnModuleDestroy {
       throw new BadRequestException('Bu alan için kısa süre önce oy kullandınız. Lütfen birkaç dakika sonra tekrar deneyiniz.');
     }
 
-    const issues = body.issues || [];
+    const issues = [...(body.issues || [])];
+    const userNote = (body.note || body.comment)?.trim();
+    if (userNote) {
+      issues.push(`Yorum: "${userNote}"`);
+    }
+
     const survey = await this.surveys.save({
       id: randomUUID(),
       locationId: location.id,

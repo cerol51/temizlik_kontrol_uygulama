@@ -42,6 +42,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
   const [supStatus, setSupStatus] = useState<SupervisorLocationStatus | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(false);
+  const [taskTab, setTaskTab] = useState<'ALL' | 'MINE' | 'LOCATION'>('ALL');
 
   // Routine cleaning modal state
   const [cleaningModalOpen, setCleaningModalOpen] = useState(false);
@@ -67,14 +68,18 @@ export function StaffScreen({ user, token, onLogout }: Props) {
 
   useEffect(() => {
     loadInitialData();
-  }, []);
+    const interval = setInterval(() => {
+      refreshLocationData();
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [selectedLocation?.id]);
 
   async function loadInitialData() {
     try {
       setLoading(true);
       const locs = await fetchLocationsApi();
       setLocations(locs);
-      if (locs.length > 0) {
+      if (locs.length > 0 && !selectedLocation) {
         const first = locs[0];
         setSelectedLocation(first);
         await refreshLocationData(first.id);
@@ -88,14 +93,15 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     }
   }
 
-  async function refreshLocationData(locId: string) {
+  async function refreshLocationData(locId?: string) {
     try {
+      const activeLocId = locId || selectedLocation?.id;
       const [status, allIncs] = await Promise.all([
-        fetchSupervisorStatusApi(locId, token),
+        activeLocId ? fetchSupervisorStatusApi(activeLocId, token).catch(() => null) : null,
         fetchAllIncidentsApi(token),
       ]);
-      setSupStatus(status);
-      setIncidents(allIncs.filter((inc) => inc.locationId === locId));
+      if (status) setSupStatus(status);
+      setIncidents(allIncs || []);
     } catch (err) {
       // non-blocking
     }
@@ -216,10 +222,28 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     }
   }
 
-  // Open & dispatched tasks
-  const pendingTasks = incidents.filter(
+  // Pending task filters
+  const myName = (user.fullName || user.username || '').toLowerCase();
+
+  const allPendingTasks = incidents.filter(
     (inc) => inc.status === 'OPEN' || inc.status === 'DISPATCHED' || inc.status === 'ESCALATED',
   );
+
+  const myPendingTasks = allPendingTasks.filter((inc) => {
+    const assigned = (inc.assignedStaffName || '').toLowerCase();
+    return assigned && (assigned.includes(myName) || myName.includes(assigned));
+  });
+
+  const locationPendingTasks = allPendingTasks.filter(
+    (inc) => selectedLocation && inc.locationId === selectedLocation.id,
+  );
+
+  const displayedTasks =
+    taskTab === 'MINE'
+      ? myPendingTasks
+      : taskTab === 'LOCATION'
+        ? locationPendingTasks
+        : allPendingTasks;
 
   return (
     <View style={styles.container}>
@@ -313,56 +337,117 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         {/* Real-time incident / non-conformity tasks */}
         <View style={styles.sectionHeaderWrap}>
           <Text style={styles.sectionTitle}>
-            🚨 Şeften & Sistemden Gelen Müdahale Görevleri ({pendingTasks.length})
+            🚨 Şeften & Sistemden Gelen Müdahale Görevleri ({allPendingTasks.length})
           </Text>
         </View>
 
-        {pendingTasks.length === 0 ? (
+        {/* Task Filter Chips */}
+        <View style={styles.taskTabRow}>
+          <TouchableOpacity
+            style={[styles.taskTabChip, taskTab === 'ALL' && styles.taskTabChipActive]}
+            onPress={() => setTaskTab('ALL')}
+          >
+            <Text
+              style={[styles.taskTabChipText, taskTab === 'ALL' && styles.taskTabChipTextActive]}
+            >
+              ⚡ Tüm Görevler ({allPendingTasks.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.taskTabChip, taskTab === 'MINE' && styles.taskTabChipActive]}
+            onPress={() => setTaskTab('MINE')}
+          >
+            <Text
+              style={[styles.taskTabChipText, taskTab === 'MINE' && styles.taskTabChipTextActive]}
+            >
+              👤 Bana Atananlar ({myPendingTasks.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.taskTabChip, taskTab === 'LOCATION' && styles.taskTabChipActive]}
+            onPress={() => setTaskTab('LOCATION')}
+          >
+            <Text
+              style={[
+                styles.taskTabChipText,
+                taskTab === 'LOCATION' && styles.taskTabChipTextActive,
+              ]}
+            >
+              📍 Seçili WC ({locationPendingTasks.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {displayedTasks.length === 0 ? (
           <View style={styles.emptyTaskCard}>
             <Text style={styles.emptyTaskIcon}>✨</Text>
-            <Text style={styles.emptyTaskTitle}>Bekleyen Acil Görev Yok</Text>
+            <Text style={styles.emptyTaskTitle}>Bekleyen Görev Yok</Text>
             <Text style={styles.emptyTaskSub}>
-              Bu lavaboda şef veya ziyaretçi tarafından iletilmiş açık bir uygunsuzluk bulunmuyor.
+              {taskTab === 'MINE'
+                ? 'Şu anda doğrudan size atanmış açık bir görev bulunmuyor.'
+                : taskTab === 'LOCATION'
+                  ? 'Bu lavaboda açık bir uygunsuzluk bildirimi bulunmuyor.'
+                  : 'Sistemde saha müdahalesi bekleyen herhangi bir açık görev bulunmuyor.'}
             </Text>
           </View>
         ) : (
-          pendingTasks.map((task) => (
-            <View key={task.id} style={styles.taskCard}>
-              <View style={styles.taskHeader}>
-                <View style={styles.taskBadge}>
-                  <Text style={styles.taskBadgeText}>
-                    {task.issuesJson && task.issuesJson.some((i) => i.includes('Denetim'))
-                      ? '⚠️ ŞEF DENETİM UYGUNSUZLUĞU'
-                      : '🚨 KÖTÜ ANKET BİLDİRİMİ'}
-                  </Text>
+          displayedTasks.map((task) => {
+            const assigned = (task.assignedStaffName || '').toLowerCase();
+            const isAssignedToMe = assigned && (assigned.includes(myName) || myName.includes(assigned));
+
+            return (
+              <View key={task.id} style={styles.taskCard}>
+                <View style={styles.taskHeader}>
+                  <View style={styles.taskBadge}>
+                    <Text style={styles.taskBadgeText}>
+                      {task.issuesJson && task.issuesJson.some((i) => i.includes('Denetim'))
+                        ? '⚠️ ŞEF DENETİM UYGUNSUZLUĞU'
+                        : '🚨 KÖTÜ ANKET BİLDİRİMİ'}
+                    </Text>
+                  </View>
+                  <Text style={styles.taskTime}>{formatTime(task.time)}</Text>
                 </View>
-                <Text style={styles.taskTime}>{formatTime(task.time)}</Text>
-              </View>
 
-              <Text style={styles.taskIssues}>
-                {Array.isArray(task.issuesJson) && task.issuesJson.length > 0
-                  ? task.issuesJson.join(' • ')
-                  : 'Acil temizlik ve düzenleme müdahalesi gerekli'}
-              </Text>
-
-              {task.assignedStaffName && (
-                <Text style={styles.taskAssigned}>
-                  👤 Atanan Görevli: <Text style={styles.boldText}>{task.assignedStaffName}</Text>
+                <Text style={styles.taskLocTag}>
+                  📍 {task.locationName || locations.find((l) => l.id === task.locationId)?.name || 'WC Mahali'} ({task.locationCode || ''})
                 </Text>
-              )}
 
-              <TouchableOpacity
-                style={styles.taskActionBtn}
-                onPress={() => {
-                  setActiveIncidentToResolve(task);
-                  setPhotoBase64(null);
-                  setResolutionNote('');
-                }}
-              >
-                <Text style={styles.taskActionBtnText}>📸 Müdahale Et & Fotoğrafla Kapat</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+                <Text style={styles.taskIssues}>
+                  {Array.isArray(task.issuesJson) && task.issuesJson.length > 0
+                    ? task.issuesJson.join(' • ')
+                    : 'Acil temizlik ve düzenleme müdahalesi gerekli'}
+                </Text>
+
+                {task.assignedStaffName ? (
+                  <View style={styles.assignedBadgeRow}>
+                    <Text style={styles.taskAssigned}>
+                      👤 Atanan Personel: <Text style={styles.boldText}>{task.assignedStaffName}</Text>
+                    </Text>
+                    {isAssignedToMe && (
+                      <View style={styles.myAssignmentTag}>
+                        <Text style={styles.myAssignmentTagText}>⭐ SİZE ATANDI</Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={styles.taskUnassigned}>⏳ Şef Görevlendirmesi Bekleniyor</Text>
+                )}
+
+                <TouchableOpacity
+                  style={styles.taskActionBtn}
+                  onPress={() => {
+                    setActiveIncidentToResolve(task);
+                    setPhotoBase64(null);
+                    setResolutionNote('');
+                  }}
+                >
+                  <Text style={styles.taskActionBtnText}>📸 Müdahale Et & Fotoğrafla Kapat</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
         )}
 
         {/* Secondary Buttons: Planlanan Saatler & Mevcut Saatler */}
@@ -808,6 +893,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     lineHeight: 18,
   },
+  taskLocTag: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
   taskAssigned: {
     fontSize: 12,
     color: '#94a3b8',
@@ -1131,5 +1222,58 @@ const styles = StyleSheet.create({
     color: '#34d399',
     fontSize: 11,
     fontWeight: '700',
+  },
+  taskTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  taskTabChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  taskTabChipActive: {
+    backgroundColor: '#0284c7',
+    borderColor: '#38bdf8',
+  },
+  taskTabChipText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  taskTabChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  assignedBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  myAssignmentTag: {
+    backgroundColor: '#065f46',
+    borderColor: '#10b981',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  myAssignmentTagText: {
+    color: '#6ee7b7',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  taskUnassigned: {
+    color: '#f59e0b',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 10,
   },
 });

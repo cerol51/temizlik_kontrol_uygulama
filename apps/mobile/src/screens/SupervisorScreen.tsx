@@ -20,6 +20,7 @@ import {
   fetchSupervisorStatusApi,
   formatTime,
   showAlert,
+  verifyAndCloseIncidentApi,
 } from '../api';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
 
@@ -34,6 +35,12 @@ const AUDIT_CHECKLIST_CRITERIA = [
   'Musluk, batarya ve sifonlar sorunsuz çalışıyor',
   'Kapı kolları ve kilit mekanizmaları sağlam',
   'Genel hijyen ve düzen standartlara uygun',
+];
+
+const DEFAULT_STAFF_USERS: AppUser[] = [
+  { id: 'usr-ahmet', fullName: 'Ahmet Temizlik', username: 'ahmet', role: 'employee' },
+  { id: 'usr-mehmet', fullName: 'Mehmet Hijyen', username: 'mehmet', role: 'employee' },
+  { id: 'usr-personel', fullName: 'Saha Temizlik Personeli', username: 'personel', role: 'employee' },
 ];
 
 interface Props {
@@ -58,7 +65,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
   // Assignment modal state
   const [assigningIncident, setAssigningIncident] = useState<Incident | null>(null);
-  const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('Ahmet Yılmaz');
+  const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('Ahmet Temizlik');
   const [assigning, setAssigning] = useState(false);
 
   // 3 Primary Action Modals
@@ -83,7 +90,18 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
   useEffect(() => {
     loadAllData();
-  }, []);
+    const interval = setInterval(() => {
+      // Arka plan otomatik senkronizasyon (3.5 saniye)
+      Promise.all([
+        fetchAllIncidentsApi(token),
+        selectedLocation ? fetchSupervisorStatusApi(selectedLocation.id, token).catch(() => null) : null,
+      ]).then(([incs, status]) => {
+        if (incs) setAllIncidents(incs);
+        if (status) setSupStatus(status);
+      }).catch(() => {});
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [selectedLocation?.id]);
 
   async function loadAllData() {
     try {
@@ -95,9 +113,10 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       ]);
       setLocations(locs);
       setAllIncidents(incs);
-      setStaffUsers(users);
-      if (users.length > 0) {
-        setSelectedStaffToAssign(users[0].fullName || users[0].username);
+      const combinedStaff = users.length > 0 ? users : DEFAULT_STAFF_USERS;
+      setStaffUsers(combinedStaff);
+      if (combinedStaff.length > 0) {
+        setSelectedStaffToAssign(combinedStaff[0].fullName || combinedStaff[0].username);
       }
       if (locs.length > 0 && !selectedLocation) {
         const first = locs[0];
@@ -125,9 +144,8 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   }
 
   function openAssignModal(inc: Incident) {
-    const defaultStaff =
-      selectedStaffToAssign ||
-      (staffUsers.length > 0 ? (staffUsers[0].fullName || staffUsers[0].username) : 'Ahmet Yılmaz');
+    const list = staffUsers.length > 0 ? staffUsers : DEFAULT_STAFF_USERS;
+    const defaultStaff = selectedStaffToAssign || list[0].fullName || list[0].username;
     setSelectedStaffToAssign(defaultStaff);
     setAssigningIncident(inc);
   }
@@ -154,6 +172,21 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       showAlert('Hata', errMsg);
     } finally {
       setAssigning(false);
+    }
+  }
+
+  async function handleVerifyClose(inc: Incident) {
+    try {
+      await verifyAndCloseIncidentApi(inc.id, undefined, token);
+      const msg = `Olay (${inc.locationCode || 'Mahal'}) başarıyla doğrulanıp kapatıldı.`;
+      setNotice({ text: `✓ ${msg}` });
+      showAlert('Kapatıldı', msg);
+      const incs = await fetchAllIncidentsApi(token);
+      setAllIncidents(incs);
+    } catch (err: any) {
+      const errMsg = err?.message || 'Olay kapatılamadı.';
+      setNotice({ text: errMsg, bad: true });
+      showAlert('Hata', errMsg);
     }
   }
 
@@ -448,6 +481,12 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
                             <Text style={styles.photoThumbBtnText}>📸 Çözüm Fotoğrafını Gör</Text>
                           </TouchableOpacity>
                         )}
+                        <TouchableOpacity
+                          style={styles.verifyCloseBtn}
+                          onPress={() => handleVerifyClose(inc)}
+                        >
+                          <Text style={styles.verifyCloseBtnText}>✔️ Sahada Doğrula & Olayı Kapat</Text>
+                        </TouchableOpacity>
                       </View>
                     ) : inc.status === 'DISPATCHED' ? (
                       <View style={styles.assignedBox}>
@@ -751,38 +790,42 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
             <Text style={styles.inputLabel}>Görevlendirilecek Saha Personeli:</Text>
             <View style={styles.staffSelectCol}>
-              {staffUsers.length === 0 ? (
-                <TouchableOpacity
-                  style={[
-                    styles.staffSelectPill,
-                    selectedStaffToAssign === 'Ahmet Yılmaz' && styles.staffSelectPillActive,
-                  ]}
-                  onPress={() => setSelectedStaffToAssign('Ahmet Yılmaz')}
-                >
-                  <Text style={styles.staffSelectPillText}>Ahmet Yılmaz (Saha Personeli)</Text>
-                </TouchableOpacity>
-              ) : (
-                staffUsers.map((u) => {
-                  const name = u.fullName || u.username;
-                  const isChosen = selectedStaffToAssign === name;
-                  return (
-                    <TouchableOpacity
-                      key={u.id}
-                      style={[styles.staffSelectPill, isChosen && styles.staffSelectPillActive]}
-                      onPress={() => setSelectedStaffToAssign(name)}
-                    >
-                      <Text
-                        style={[
-                          styles.staffSelectPillText,
-                          isChosen && styles.staffSelectPillTextActive,
-                        ]}
-                      >
-                        {name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })
-              )}
+              {(staffUsers.length > 0 ? staffUsers : DEFAULT_STAFF_USERS).map((u) => {
+                const name = u.fullName || u.username;
+                const isChosen = selectedStaffToAssign === name;
+                return (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={[styles.staffSelectPill, isChosen && styles.staffSelectPillActive]}
+                    onPress={() => setSelectedStaffToAssign(name)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.staffSelectPillLeft}>
+                      <View style={[styles.radioCircle, isChosen && styles.radioCircleActive]}>
+                        {isChosen && <View style={styles.radioDot} />}
+                      </View>
+                      <View style={{ marginLeft: 10 }}>
+                        <Text
+                          style={[
+                            styles.staffSelectPillText,
+                            isChosen && styles.staffSelectPillTextActive,
+                          ]}
+                        >
+                          👤 {name}
+                        </Text>
+                        <Text style={styles.staffSelectRoleText}>
+                          Saha Görevlisi (@{u.username})
+                        </Text>
+                      </View>
+                    </View>
+                    {isChosen && (
+                      <View style={styles.chosenBadge}>
+                        <Text style={styles.chosenBadgeText}>✓ Seçildi</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <View style={styles.modalActions}>
@@ -1507,17 +1550,60 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#334155',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   staffSelectPillActive: {
     borderColor: '#0284c7',
-    backgroundColor: 'rgba(2, 132, 199, 0.15)',
+    backgroundColor: 'rgba(2, 132, 199, 0.18)',
+  },
+  staffSelectPillLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#64748b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioCircleActive: {
+    borderColor: '#38bdf8',
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#38bdf8',
   },
   staffSelectPillText: {
     color: '#cbd5e1',
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '600',
   },
   staffSelectPillTextActive: {
     color: '#ffffff',
+    fontWeight: '700',
+  },
+  staffSelectRoleText: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  chosenBadge: {
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  chosenBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
     fontWeight: '700',
   },
   photoOverlay: {
@@ -1555,5 +1641,18 @@ const styles = StyleSheet.create({
   photoCloseBtnText: {
     color: '#ffffff',
     fontWeight: '700',
+  },
+  verifyCloseBtn: {
+    backgroundColor: '#059669',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  verifyCloseBtnText: {
+    color: '#ffffff',
+    fontWeight: '800',
+    fontSize: 13,
   },
 });

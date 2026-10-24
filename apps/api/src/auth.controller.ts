@@ -188,9 +188,9 @@ export class AuthController {
     return toPublicUser(user);
   }
 
-  // 4. Admin - Kayıtlı Kullanıcıları Listele
+  // 4. Admin & Şef - Kayıtlı Kullanıcıları Listele
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'supervisor')
   @Get('users')
   async listUsers() {
     return this.usersRepo.find({

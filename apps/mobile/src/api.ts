@@ -110,7 +110,7 @@ export async function fetchLocationsApi(): Promise<Location[]> {
 }
 
 export async function fetchPublicStatusApi(tokenOrId: string): Promise<PublicLocationStatus> {
-  return apiRequest<PublicLocationStatus>(`/public/restroom/${tokenOrId}`);
+  return apiRequest<PublicLocationStatus>(`/locations/${tokenOrId}/public`);
 }
 
 export async function submitSurveyApi(data: {
@@ -133,12 +133,12 @@ export async function fetchSupervisorStatusApi(
   locationId: string,
   token: string,
 ): Promise<SupervisorLocationStatus> {
-  return apiRequest<SupervisorLocationStatus>(`/supervisor/restroom/${locationId}`, token);
+  return apiRequest<SupervisorLocationStatus>(`/locations/${locationId}/supervisor`, token);
 }
 
 export async function fetchAllIncidentsApi(token: string): Promise<Incident[]> {
-  const dashboard = await apiRequest<{ allIncidents: Incident[] }>('/reports/dashboard', token);
-  return dashboard.allIncidents || [];
+  const incidents = await apiRequest<Incident[]>('/incidents', token);
+  return incidents || [];
 }
 
 // 4. Şef Olay Görevlendirme (Dispatch) -> POST /incidents/:id/dispatch
@@ -168,6 +168,20 @@ export async function resolveIncidentApi(
     body: JSON.stringify({
       note: resolutionNote || 'Görev personel tarafından sahada tamamlandı.',
       photoUrl,
+    }),
+  });
+}
+
+// 6. Şef Doğrulama ve Kapatma (Verify & Close) -> POST /incidents/:id/verify-close
+export async function verifyAndCloseIncidentApi(
+  incidentId: string,
+  note?: string,
+  token?: string,
+): Promise<Incident> {
+  return apiRequest<Incident>(`/incidents/${incidentId}/verify-close`, token, {
+    method: 'POST',
+    body: JSON.stringify({
+      note: note || 'Şef tarafından sahada denetlenerek doğrulandı ve kapatıldı.',
     }),
   });
 }
@@ -219,8 +233,11 @@ export async function fetchStaffUsersApi(token: string): Promise<AppUser[]> {
 
 export function formatTime(value?: string | null): string {
   if (!value) return 'Kayıt yok';
+  const trimmed = value.trim();
+  if (/^\d{1,2}:\d{2}$/.test(trimmed)) return trimmed;
   try {
     const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
     const hours = String(d.getHours()).padStart(2, '0');
     const mins = String(d.getMinutes()).padStart(2, '0');
     return `${hours}:${mins}`;

@@ -39,6 +39,11 @@ export class CreateSurveyFeedbackDto {
   @IsString()
   @MaxLength(500)
   comment?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }
 
 // Geriye dönük uyumluluk alias
