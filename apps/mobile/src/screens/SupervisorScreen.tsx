@@ -14,6 +14,7 @@ import {
 import {
   assignIncidentApi,
   createAuditApi,
+  fetchActiveChecklistApi,
   fetchAllIncidentsApi,
   fetchLocationsApi,
   fetchStaffUsersApi,
@@ -24,7 +25,7 @@ import {
 } from '../api';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
 
-const AUDIT_CHECKLIST_CRITERIA = [
+const DEFAULT_CHECKLIST_CRITERIA = [
   'Ayna ve lavabolar lekesiz ve kuru',
   'Klozet ve pisuvarlar temiz ve kokusuz',
   'Zemin kuru ve lekesiz',
@@ -76,10 +77,13 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   // In-screen notice banner
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
 
+  // Dynamic checklist criteria from database
+  const [checklistCriteria, setChecklistCriteria] = useState<string[]>(DEFAULT_CHECKLIST_CRITERIA);
+
   // Audit state
   const [auditAnswers, setAuditAnswers] = useState<Record<number, boolean>>(() => {
     const init: Record<number, boolean> = {};
-    AUDIT_CHECKLIST_CRITERIA.forEach((_, idx) => (init[idx] = true));
+    DEFAULT_CHECKLIST_CRITERIA.forEach((_, idx) => (init[idx] = true));
     return init;
   });
   const [auditNote, setAuditNote] = useState('');
@@ -106,13 +110,17 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   async function loadAllData() {
     try {
       setLoading(true);
-      const [locs, incs, users] = await Promise.all([
+      const [locs, incs, users, clData] = await Promise.all([
         fetchLocationsApi(),
         fetchAllIncidentsApi(token),
         fetchStaffUsersApi(token).catch(() => []),
+        fetchActiveChecklistApi().catch(() => null),
       ]);
       setLocations(locs);
       setAllIncidents(incs);
+      if (clData?.items && clData.items.length > 0) {
+        setChecklistCriteria(clData.items);
+      }
       const combinedStaff = users.length > 0 ? users : DEFAULT_STAFF_USERS;
       setStaffUsers(combinedStaff);
       if (combinedStaff.length > 0) {
@@ -194,7 +202,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
     if (!selectedLocation) return;
     try {
       setSubmittingAudit(true);
-      const formattedChecklist = AUDIT_CHECKLIST_CRITERIA.map((criterion, idx) => ({
+      const formattedChecklist = checklistCriteria.map((criterion, idx) => ({
         id: idx + 1,
         label: criterion,
         isOk: auditAnswers[idx] ?? true,
@@ -226,7 +234,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       setAuditNote('');
       // Reset answers to all true
       const resetAnswers: Record<number, boolean> = {};
-      AUDIT_CHECKLIST_CRITERIA.forEach((_, idx) => (resetAnswers[idx] = true));
+      checklistCriteria.forEach((_, idx) => (resetAnswers[idx] = true));
       setAuditAnswers(resetAnswers);
 
       // Refresh data
@@ -618,7 +626,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
             </Text>
 
             <ScrollView style={styles.modalScroll}>
-              {AUDIT_CHECKLIST_CRITERIA.map((criterion, idx) => {
+              {checklistCriteria.map((criterion, idx) => {
                 const isCompliant = auditAnswers[idx];
                 return (
                   <View key={idx} style={styles.auditItemRow}>

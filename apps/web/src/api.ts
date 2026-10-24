@@ -282,4 +282,23 @@ export async function deleteUserApi(id: string, token?: string): Promise<{ succe
   });
 }
 
+export interface ActiveChecklist {
+  template: {
+    id: string;
+    version: string;
+    title: string;
+    isActive: boolean;
+  };
+  items: Array<{
+    id: string;
+    label: string;
+    orderNum: number;
+    weight: number;
+  }>;
+}
+
+export async function fetchActiveChecklistApi(): Promise<ActiveChecklist> {
+  return api<ActiveChecklist>('/checklists/active');
+}
+
 

@@ -21,6 +21,8 @@ import { Repository } from 'typeorm';
 import { AuthenticatedUser, JwtAuthGuard, Public, Roles, RolesGuard } from './auth';
 import {
   AuditTrail,
+  ChecklistItem,
+  ChecklistTemplate,
   CleaningRecord,
   Incident,
   Location,
@@ -221,6 +223,10 @@ export class RestroomsController implements OnModuleDestroy {
     private readonly surveys: Repository<SurveyFeedback>,
     @InjectRepository(AuditTrail)
     private readonly auditTrail: Repository<AuditTrail>,
+    @InjectRepository(ChecklistTemplate)
+    private readonly templates: Repository<ChecklistTemplate>,
+    @InjectRepository(ChecklistItem)
+    private readonly items: Repository<ChecklistItem>,
     private readonly notifications: NotificationsService,
   ) {
     // 10 saniyede bir otomatik eskalasyon kontrolü (2 dakika kuralı)
@@ -235,6 +241,41 @@ export class RestroomsController implements OnModuleDestroy {
   @Public()
   health(): { status: string; version: string } {
     return { status: 'ok', version: '2.0.0' };
+  }
+
+  // Sürümlü Aktif Checklist Şablonunu Getir
+  @Get('checklists/active')
+  @Public()
+  async getActiveChecklist() {
+    const template = await this.templates.findOne({
+      where: { isActive: true },
+      order: { createdAt: 'DESC' },
+    });
+    if (!template) {
+      return {
+        id: 'default',
+        versionTag: 'v1.2',
+        title: 'Standart Saha Denetim Şablonu',
+        items: [
+          'Ayna ve lavabolar lekesiz',
+          'Klozet ve pisuvarlar hijyenik',
+          'Zemin kuru ve temiz',
+          'Sabun / kağıt havlu dolu',
+          'Koku durumu ferah',
+          'Çöp kovası boş ve poşetli',
+        ],
+      };
+    }
+    const items = await this.items.find({
+      where: { templateId: template.id },
+      order: { itemOrder: 'ASC' },
+    });
+    return {
+      id: template.id,
+      versionTag: template.versionTag,
+      title: template.title,
+      items: items.map((i) => i.itemText),
+    };
   }
 
   // Tüm mahaller (Public listeleme / seçim)

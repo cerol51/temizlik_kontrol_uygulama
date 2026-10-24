@@ -202,10 +202,16 @@ export class ReportsController {
     const locations = await this.locations.find();
     const locMap = new Map(locations.map((l) => [l.id, l.name]));
 
+    const sanitizeCsv = (val: string) => {
+      let clean = (val || '').replace(/"/g, '""');
+      if (/^[=+\-@]/.test(clean)) clean = `'${clean}`;
+      return `"${clean}"`;
+    };
+
     let csv = '\uFEFFZaman,Mahal,Eylem,Kullanici,Ozet\n';
     logs.forEach((log) => {
       const locName = log.locationId ? locMap.get(log.locationId) || log.locationId : 'Genel';
-      csv += `"${log.timestamp}","${locName}","${log.action}","${log.userRole}","${log.summary.replace(/"/g, '""')}"\n`;
+      csv += `${sanitizeCsv(log.timestamp)},${sanitizeCsv(locName)},${sanitizeCsv(log.action)},${sanitizeCsv(log.userRole)},${sanitizeCsv(log.summary)}\n`;
     });
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

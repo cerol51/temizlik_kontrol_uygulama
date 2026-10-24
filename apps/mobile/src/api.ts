@@ -18,7 +18,7 @@ function getDefaultApiUrl(): string {
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:3000/api';
   }
-  return 'http://192.168.1.106:3000/api';
+  return process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
 }
 
 const STORAGE_API_KEY = 'wc_mobile_api_url';
@@ -111,6 +111,10 @@ export async function fetchLocationsApi(): Promise<Location[]> {
 
 export async function fetchPublicStatusApi(tokenOrId: string): Promise<PublicLocationStatus> {
   return apiRequest<PublicLocationStatus>(`/locations/${tokenOrId}/public`);
+}
+
+export async function fetchActiveChecklistApi(): Promise<{ versionTag: string; title: string; items: string[] }> {
+  return apiRequest<{ versionTag: string; title: string; items: string[] }>('/checklists/active');
 }
 
 export async function submitSurveyApi(data: {

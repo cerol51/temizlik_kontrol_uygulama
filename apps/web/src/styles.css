@@ -1,3 +1,41 @@
+@import "tailwindcss";
+
+.badge-ontime {
+  background-color: #059669;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.badge-late {
+  background-color: #d97706;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.badge-missed, .badge-notdone {
+  background-color: #dc2626;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.badge-early {
+  background-color: #0284c7;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 11px;
+}
+
 :root {
   font-family: 'Segoe UI', Arial, sans-serif;
   color: #173a31;
