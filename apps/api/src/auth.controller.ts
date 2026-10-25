@@ -20,6 +20,7 @@ import {
   AppRole,
   AuthenticatedUser,
   hashPassword,
+  invalidateUserCache,
   JwtAuthGuard,
   MIN_PASSWORD_LENGTH,
   Public,
@@ -111,7 +112,7 @@ export class AuthController {
 
   // 1. Kullanıcı Kaydı (Public) — rol her zaman 'employee'
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('register')
   async register(@Body() body: RegisterDto) {
     const fullName = body.fullName.trim();
@@ -239,6 +240,8 @@ export class AuthController {
       }),
     );
 
+    invalidateUserCache();
+
     await this.audit(
       'ADMIN_KULLANICI_EKLE',
       `admin (${currentUser.name})`,
@@ -273,6 +276,7 @@ export class AuthController {
     }
 
     await this.usersRepo.delete(id);
+    invalidateUserCache(id);
 
     await this.audit(
       'ADMIN_KULLANICI_SIL',

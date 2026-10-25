@@ -139,6 +139,9 @@ export class CleaningRecord {
   @Column({ name: 'tasks_confirmed', type: 'boolean', default: true })
   tasksConfirmed: boolean;
 
+  @Column({ name: 'is_verified_qr', type: 'boolean', default: false })
+  isVerifiedQr: boolean;
+
   @Column({ type: 'text', nullable: true })
   note: string | null;
 
@@ -174,6 +177,9 @@ export class SupervisorAudit {
 
   @Column({ name: 'is_approved', type: 'boolean' })
   isApproved: boolean;
+
+  @Column({ name: 'is_verified_qr', type: 'boolean', default: false })
+  isVerifiedQr: boolean;
 
   @Column({ name: 'checklist_json', type: 'jsonb' })
   checklistJson: Record<string, boolean>;

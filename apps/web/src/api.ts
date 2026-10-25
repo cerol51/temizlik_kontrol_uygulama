@@ -26,6 +26,7 @@ export interface Incident {
   currentSupName?: string | null;
   backupSupName?: string | null;
   assignedStaffName?: string | null;
+  assignedStaffId?: string | null;
   isEscalated: boolean;
   time: string;
   resolvedAt?: string | null;

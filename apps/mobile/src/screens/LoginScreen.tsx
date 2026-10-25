@@ -17,8 +17,9 @@ interface Props {
 }
 
 export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
-  const [username, setUsername] = useState('ahmet');
-  const [password, setPassword] = useState('ahmet123');
+  const isDemo = __DEV__ || process.env.EXPO_PUBLIC_DEMO_MODE === 'true';
+  const [username, setUsername] = useState(isDemo ? 'ahmet' : '');
+  const [password, setPassword] = useState(isDemo ? 'ahmet123' : '');
   const [loading, setLoading] = useState(false);
 
   // Server settings modal
@@ -73,35 +74,39 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
           </Text>
         </View>
 
-        {/* Quick Role Selectors */}
-        <Text style={styles.quickLabel}>HIZLI SAHA GİRİŞİ:</Text>
-        <View style={styles.quickGrid}>
-          <TouchableOpacity
-            style={styles.quickBtn}
-            onPress={() => {
-              setUsername('ahmet');
-              setPassword('ahmet123');
-              handleLogin('ahmet', 'ahmet123');
-            }}
-          >
-            <Text style={styles.quickBtnIcon}>🧹</Text>
-            <Text style={styles.quickBtnTitle}>Personel Girişi</Text>
-            <Text style={styles.quickBtnSub}>Ahmet Yılmaz</Text>
-          </TouchableOpacity>
+        {/* Quick Role Selectors (Yalnızca Geliştirme / Demo Ortamında) */}
+        {isDemo && (
+          <>
+            <Text style={styles.quickLabel}>HIZLI SAHA GİRİŞİ (DEMO):</Text>
+            <View style={styles.quickGrid}>
+              <TouchableOpacity
+                style={styles.quickBtn}
+                onPress={() => {
+                  setUsername('ahmet');
+                  setPassword('ahmet123');
+                  handleLogin('ahmet', 'ahmet123');
+                }}
+              >
+                <Text style={styles.quickBtnIcon}>🧹</Text>
+                <Text style={styles.quickBtnTitle}>Personel Girişi</Text>
+                <Text style={styles.quickBtnSub}>Ahmet Yılmaz</Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.quickBtn, styles.quickBtnSupervisor]}
-            onPress={() => {
-              setUsername('kemal');
-              setPassword('kemal123');
-              handleLogin('kemal', 'kemal123');
-            }}
-          >
-            <Text style={styles.quickBtnIcon}>👮</Text>
-            <Text style={styles.quickBtnTitle}>Şef Girişi</Text>
-            <Text style={styles.quickBtnSub}>Kemal Demir</Text>
-          </TouchableOpacity>
-        </View>
+              <TouchableOpacity
+                style={[styles.quickBtn, styles.quickBtnSupervisor]}
+                onPress={() => {
+                  setUsername('kemal');
+                  setPassword('kemal123');
+                  handleLogin('kemal', 'kemal123');
+                }}
+              >
+                <Text style={styles.quickBtnIcon}>👮</Text>
+                <Text style={styles.quickBtnTitle}>Şef Girişi</Text>
+                <Text style={styles.quickBtnSub}>Kemal Demir</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
 
         {/* Guest Survey Kiosk Mode */}
         <TouchableOpacity style={styles.guestKioskBtn} onPress={onOpenGuestMode}>

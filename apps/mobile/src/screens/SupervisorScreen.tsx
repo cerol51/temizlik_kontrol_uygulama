@@ -26,16 +26,12 @@ import {
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
 
 const DEFAULT_CHECKLIST_CRITERIA = [
-  'Ayna ve lavabolar lekesiz ve kuru',
-  'Klozet ve pisuvarlar temiz ve kokusuz',
-  'Zemin kuru ve lekesiz',
-  'Sıvı sabun ve dezenfektan dolu',
-  'Tuvalet kağıdı ve kağıt havlu mevcut',
-  'Çöp kovaları temiz ve taşmamış',
-  'Havalandırma ve koku durumu ferah',
-  'Musluk, batarya ve sifonlar sorunsuz çalışıyor',
-  'Kapı kolları ve kilit mekanizmaları sağlam',
-  'Genel hijyen ve düzen standartlara uygun',
+  'Ayna ve lavabolar lekesiz',
+  'Klozet ve pisuvarlar hijyenik',
+  'Zemin kuru ve temiz',
+  'Sabun / kağıt havlu dolu',
+  'Koku durumu ferah',
+  'Çöp kovası boş ve poşetli',
 ];
 
 const DEFAULT_STAFF_USERS: AppUser[] = [
@@ -168,13 +164,19 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
   async function handleAssignStaff() {
     if (!assigningIncident) return;
+    const list = staffUsers.length > 0 ? staffUsers : DEFAULT_STAFF_USERS;
     const staffToUse =
       selectedStaffToAssign ||
-      (staffUsers.length > 0 ? (staffUsers[0].fullName || staffUsers[0].username) : 'Ahmet Yılmaz');
+      (list[0]?.fullName || list[0]?.username || 'Ahmet Temizlik');
+
+    const matchedStaff = list.find(
+      (u) => (u.fullName || u.username) === staffToUse || u.id === staffToUse,
+    );
+    const staffId = matchedStaff?.id;
 
     try {
       setAssigning(true);
-      await assignIncidentApi(assigningIncident.id, staffToUse, token);
+      await assignIncidentApi(assigningIncident.id, staffToUse, token, staffId);
       const successMsg = `Görev başarıyla ${staffToUse} personeline iletildi.`;
       setNotice({ text: `✓ ${successMsg}` });
       showAlert('Atandı', successMsg);

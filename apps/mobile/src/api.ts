@@ -25,16 +25,24 @@ const STORAGE_API_KEY = 'wc_mobile_api_url';
 let currentApiBaseUrl = getDefaultApiUrl();
 
 // Initialize from storage
-AsyncStorage.getItem(STORAGE_API_KEY).then((saved) => {
-  if (saved) {
-    // In web, always prefer /api proxy to avoid CORS/mixed-content issues
-    if (typeof window !== 'undefined') {
-      currentApiBaseUrl = '/api';
-    } else {
-      currentApiBaseUrl = saved;
+export async function initApiBaseUrl(): Promise<string> {
+  try {
+    const saved = await AsyncStorage.getItem(STORAGE_API_KEY);
+    if (saved) {
+      if (typeof window !== 'undefined') {
+        currentApiBaseUrl = '/api';
+      } else {
+        currentApiBaseUrl = saved;
+      }
     }
+  } catch {
+    // fallback
   }
-});
+  return currentApiBaseUrl;
+}
+
+// Fire immediately as well
+void initApiBaseUrl();
 
 export function getApiBaseUrl(): string {
   return currentApiBaseUrl;
@@ -153,12 +161,13 @@ export async function assignIncidentApi(
   incidentId: string,
   staffName: string,
   token: string,
+  staffId?: string,
 ): Promise<Incident> {
   return apiRequest<Incident>(`/incidents/${incidentId}/dispatch`, token, {
     method: 'POST',
     body: JSON.stringify({
       assignedStaffName: staffName,
-      assignedStaffId: 'staff-assigned',
+      assignedStaffId: staffId || undefined,
     }),
   });
 }

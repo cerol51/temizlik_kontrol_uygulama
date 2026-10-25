@@ -50,7 +50,7 @@ export const StaffView: React.FC<StaffViewProps> = ({
   const staffAssignedTasks = effectiveIncidents.filter(
     (inc) =>
       inc.locationId === selectedId &&
-      (inc.status === 'DISPATCHED' || inc.status === 'OPEN'),
+      (inc.status === 'DISPATCHED' || inc.status === 'OPEN' || inc.status === 'ESCALATED'),
   );
 
   return (

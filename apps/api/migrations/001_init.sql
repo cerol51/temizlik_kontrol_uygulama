@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS cleaning_records (
   sla_status varchar(30) NOT NULL DEFAULT 'ON_TIME',
   diff_minutes integer NOT NULL DEFAULT 0,
   tasks_confirmed boolean NOT NULL DEFAULT true,
+  is_verified_qr boolean NOT NULL DEFAULT false,
   note text NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -68,6 +69,7 @@ CREATE TABLE IF NOT EXISTS supervisor_audits (
   template_id uuid NULL,
   template_version varchar(50) NOT NULL DEFAULT 'v1.2',
   is_approved boolean NOT NULL,
+  is_verified_qr boolean NOT NULL DEFAULT false,
   checklist_json jsonb NOT NULL,
   note text NULL,
   created_at timestamptz NOT NULL DEFAULT now()

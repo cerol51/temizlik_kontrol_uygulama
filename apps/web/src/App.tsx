@@ -268,7 +268,7 @@ export default function App() {
   // Mahallerin Yüklenmesi
   const loadLocations = useCallback(async () => {
     try {
-      const items = await api<Location[]>('/locations');
+      const items = await api<Location[]>('/locations', authToken || undefined);
       setLocations(items);
 
       const params = new URLSearchParams(window.location.search);
@@ -465,7 +465,10 @@ export default function App() {
   // Ziyaretçi Anket Gönderimi
   const handleRatingClick = async (r: 'good' | 'fair' | 'bad') => {
     setSelectedRating(r);
-    if (r !== 'bad') {
+    if (r === 'bad' || r === 'fair') {
+      // Hem kötü hem orta için kök neden ve geri bildirim formunu aç
+      setSelectedIssues([]);
+    } else {
       try {
         setBusy(true);
         await api('/surveys', undefined, {
@@ -488,7 +491,7 @@ export default function App() {
 
   const handleNegativeFeedbackSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (selectedIssues.length === 0) {
+    if (selectedRating === 'bad' && selectedIssues.length === 0) {
       alert('Lütfen en az bir şikayet nedeni seçiniz.');
       return;
     }
@@ -498,7 +501,7 @@ export default function App() {
         method: 'POST',
         body: JSON.stringify({
           locationId: selectedId,
-          rating: 'bad',
+          rating: selectedRating,
           issues: selectedIssues,
         }),
       });
@@ -519,7 +522,6 @@ export default function App() {
     try {
       setBusy(true);
       const token = await accessToken();
-      const curLoc = locations.find((l) => l.id === selectedId);
       const res = await api<{ sla: { label: string } }>(
         `/locations/${selectedId}/cleanings`,
         token,
@@ -528,7 +530,6 @@ export default function App() {
           body: JSON.stringify({
             tasksConfirmed: task1 && task2 && task3 && task4,
             note: staffNote,
-            locationToken: curLoc?.token,
           }),
         },
       );
@@ -602,15 +603,28 @@ export default function App() {
 
   // Şef Olay Görevlendirme
   const handleDispatch = async (incidentId: string) => {
-    const defaultStaff =
-      usersList.find((u) => u.role === 'employee')?.fullName || 'Ahmet Temizlik';
-    const staffName = assigneeMap[incidentId] || defaultStaff;
+    const defaultStaff = usersList.find((u) => u.role === 'employee');
+    const assignedVal = assigneeMap[incidentId];
+    const selectedUser =
+      usersList.find(
+        (u) =>
+          u.id === assignedVal ||
+          (u.fullName && u.fullName === assignedVal) ||
+          u.username === assignedVal,
+      ) || defaultStaff;
+
+    const staffId = selectedUser?.id || undefined;
+    const staffName = selectedUser?.fullName || selectedUser?.username || assignedVal || 'Ahmet Temizlik';
+
     try {
       setBusy(true);
       const token = await accessToken();
       await api(`/incidents/${incidentId}/dispatch`, token, {
         method: 'POST',
-        body: JSON.stringify({ assignedStaffName: staffName }),
+        body: JSON.stringify({
+          assignedStaffId: staffId,
+          assignedStaffName: staffName,
+        }),
       });
       setNotice({ text: `Görev ${staffName} personeline başarıyla atandı!` });
       void loadStatus();

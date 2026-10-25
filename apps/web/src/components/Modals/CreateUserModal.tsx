@@ -28,6 +28,10 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName || !username || !password) return;
+    if (password.length < 8) {
+      alert('Şifre en az 8 karakter olmalıdır.');
+      return;
+    }
     await onSubmit({ fullName, username, password, role });
     setFullName('');
     setUsername('');
@@ -84,9 +88,10 @@ export const CreateUserModal: React.FC<CreateUserModalProps> = ({
             <input
               type="password"
               required
+              minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="En az 4 karakter"
+              placeholder="En az 8 karakter"
               className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
             />
           </div>

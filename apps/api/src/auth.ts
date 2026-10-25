@@ -234,6 +234,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 // ---------------------------------------------------------------------------
 // Guard'lar
 // ---------------------------------------------------------------------------
+interface CachedUser {
+  user: AppUser;
+  cachedAt: number;
+}
+const userCache = new Map<string, CachedUser>();
+const USER_CACHE_TTL_MS = 30000; // 30 saniye TTL
+
+export function invalidateUserCache(userId?: string): void {
+  if (userId) {
+    userCache.delete(userId);
+  } else {
+    userCache.clear();
+  }
+}
+
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(
@@ -263,9 +278,22 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (rawToken) {
       const payload = verifyAppToken(rawToken);
       if (payload) {
-        // Token geçerli olsa bile kullanıcı hâlâ var mı ve rolü ne? Veritabanı esas alınır.
-        // Böylece silinen kullanıcının veya rolü değiştirilen kullanıcının eski tokenı işe yaramaz.
-        const user = await this.users.findOne({ where: { id: payload.sub } });
+        // Token geçerli olsa bile kullanıcı hâlâ var mı ve rolü ne? Veritabanı ve TTL cache esas alınır.
+        const now = Date.now();
+        const cached = userCache.get(payload.sub);
+        let user: AppUser | null = null;
+
+        if (cached && now - cached.cachedAt < USER_CACHE_TTL_MS) {
+          user = cached.user;
+        } else {
+          user = await this.users.findOne({ where: { id: payload.sub } });
+          if (user) {
+            userCache.set(payload.sub, { user, cachedAt: now });
+          } else {
+            userCache.delete(payload.sub);
+          }
+        }
+
         if (!user) throw new UnauthorizedException('Oturum geçersiz. Lütfen tekrar giriş yapın.');
         request.user = { id: user.id, name: user.fullName, roles: [user.role] };
         return true;

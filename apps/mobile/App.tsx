@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initApiBaseUrl } from './src/api';
 import { AppUser } from './src/types';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { GuestSurveyScreen } from './src/screens/GuestSurveyScreen';
@@ -22,6 +23,7 @@ export default function App() {
 
   async function restoreSession() {
     try {
+      await initApiBaseUrl();
       const [savedUser, savedToken] = await Promise.all([
         AsyncStorage.getItem(STORAGE_AUTH_USER),
         AsyncStorage.getItem(STORAGE_AUTH_TOKEN),
@@ -72,7 +74,7 @@ export default function App() {
           onLoginSuccess={handleLoginSuccess}
           onOpenGuestMode={() => setIsGuestMode(true)}
         />
-      ) : user.role === 'supervisor' ? (
+      ) : user.role === 'supervisor' || user.role === 'admin' ? (
         <SupervisorScreen user={user} token={token} onLogout={handleLogout} />
       ) : (
         <StaffScreen user={user} token={token} onLogout={handleLogout} />

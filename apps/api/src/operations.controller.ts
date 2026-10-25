@@ -18,7 +18,7 @@ import {
   SupervisorAudit,
   SurveyFeedback,
 } from './entities';
-import { evaluateDailySchedule } from './restrooms.controller';
+import { evaluateDailySchedule, getStartOfTodayIstanbul } from './restrooms.controller';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -50,13 +50,18 @@ export class ReportsController {
       this.auditTrail.find({ order: { createdAt: 'DESC' }, take: 50 }),
     ]);
 
-    // 1. Temizlik KPI'ları ve Kaçırılan (MISSED) Slot Tespiti
-    const totalCleans = cleanings.length;
+    const startOfToday = getStartOfTodayIstanbul();
+
+    // 1. Temizlik KPI'ları ve Kaçırılan (MISSED) Slot Tespiti (Bugünün verileri üzerinden)
+    const todayCleanings = cleanings.filter(
+      (c) => new Date(c.createdAt) >= startOfToday && locations.some((l) => l.id === c.locationId),
+    );
+    const totalCleans = todayCleanings.length;
     let onTimeCount = 0;
     let outOfTimeCount = 0;
     let notDoneCount = 0;
 
-    cleanings.forEach((c) => {
+    todayCleanings.forEach((c) => {
       if (c.slaStatus === 'ON_TIME') onTimeCount++;
       else if (c.slaStatus === 'OUT_OF_TIME' || c.slaStatus === 'EARLY') outOfTimeCount++;
       else if (c.slaStatus === 'NOT_DONE' || c.slaStatus === 'LATE' || c.slaStatus === 'MISSED') notDoneCount++;
@@ -66,9 +71,14 @@ export class ReportsController {
     const outOfTimeRate = totalCleans > 0 ? Math.round((outOfTimeCount / totalCleans) * 100) : 0;
     const notDoneRate = totalCleans > 0 ? Math.round((notDoneCount / totalCleans) * 100) : 0;
 
-    // 2. CSAT Hesaplaması
-    const totalSurveys = surveys.length;
-    const goodSurveys = surveys.filter((s) => s.rating === 'good' || s.rating === '5' || s.rating === '4').length;
+    // 2. CSAT Hesaplaması (Bugünün anketleri üzerinden)
+    const todaySurveys = surveys.filter(
+      (s) => new Date(s.createdAt) >= startOfToday && locations.some((l) => l.id === s.locationId),
+    );
+    const totalSurveys = todaySurveys.length;
+    const goodSurveys = todaySurveys.filter(
+      (s) => s.rating === 'good' || s.rating === '5' || s.rating === '4',
+    ).length;
     const csatRate = totalSurveys > 0 ? Math.round((goodSurveys / totalSurveys) * 100) : 100;
 
     // 3. Ortalama Müdahale Süresi (MTTR - dakika)
@@ -87,11 +97,14 @@ export class ReportsController {
         ? Math.round(totalResolutionMinutes / closedIncidents.length)
         : 8;
 
-    // 4. Denetim Kapsama Oranı
-    const auditedLocationIds = new Set(audits.map((a) => a.locationId));
+    // 4. Denetim Kapsama Oranı (Bugün denetlenen aktif mahaller)
+    const todayAudits = audits.filter(
+      (a) => new Date(a.createdAt) >= startOfToday && locations.some((l) => l.id === a.locationId),
+    );
+    const auditedLocationIds = new Set(todayAudits.map((a) => a.locationId));
     const auditCoverageRate =
       locations.length > 0
-        ? Math.round((auditedLocationIds.size / locations.length) * 100)
+        ? Math.min(100, Math.round((auditedLocationIds.size / locations.length) * 100))
         : 100;
 
     // 5. Pareto Analizi (Kök Nedenler)
@@ -111,9 +124,6 @@ export class ReportsController {
     // 6. Canlı Mahal Operasyon Matrisi ve Kaçırılan (MISSED) Slotlar
     let totalPlannedSlotsToday = 0;
     let totalMissedSlotsToday = 0;
-
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
 
     const locationMatrix = locations.map((loc) => {
       const locCleanings = cleanings.filter((c) => c.locationId === loc.id);
@@ -189,6 +199,7 @@ export class ReportsController {
           const loc = locations.find((l) => l.id === inc.locationId);
           return {
             ...inc,
+            photoUrl: inc.status === 'RESOLVED_BY_STAFF' ? inc.photoUrl : null,
             locationName: loc ? loc.name : inc.locationId,
             locationCode: loc ? loc.code : '',
           };

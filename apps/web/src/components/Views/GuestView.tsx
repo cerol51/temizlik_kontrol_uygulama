@@ -100,33 +100,39 @@ export const GuestView: React.FC<GuestViewProps> = ({
             </div>
           </div>
 
-          {/* ADMIN GİRİŞ EYLEMLERİ */}
+          {/* GİRİŞ EYLEMLERİ */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                Sistem Yöneticisi Girişi
+                Yönetim ve Personel Portalı
               </h3>
-              <span className="text-[11px] text-slate-500 font-mono">admin / admin123</span>
+              {import.meta.env.DEV && (
+                <span className="text-[11px] text-amber-700 font-mono font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  DEV: admin / admin123
+                </span>
+              )}
             </div>
 
-            <button
-              type="button"
-              onClick={onQuickAdminLogin}
-              disabled={busy}
-              className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-amber-600/20 active:scale-[0.99] transition flex items-center justify-center gap-2 text-sm"
-            >
-              <i className="fa-solid fa-crown text-amber-200"></i>
-              Sistem Yöneticisi Olarak Giriş Yap (Admin)
-            </button>
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                onClick={onQuickAdminLogin}
+                disabled={busy}
+                className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-amber-600/20 active:scale-[0.99] transition flex items-center justify-center gap-2 text-sm"
+              >
+                <i className="fa-solid fa-crown text-amber-200"></i>
+                Hızlı Demo Yönetici Girişi (Admin)
+              </button>
+            )}
 
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-500 pt-2">
-              <span>veya diğer hesapla giriş yapmak için</span>
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-600 pt-1">
+              <span>Personel, şef veya yönetici oturumu için:</span>
               <button
                 type="button"
                 onClick={onOpenAuthModal}
-                className="text-indigo-600 hover:text-indigo-800 font-bold underline"
+                className="text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
               >
-                Giriş Penceresini Aç
+                Giriş Yap
               </button>
             </div>
           </div>
@@ -228,16 +234,32 @@ export const GuestView: React.FC<GuestViewProps> = ({
             </button>
           </div>
 
-          {selectedRating === 'bad' && (
+          {(selectedRating === 'bad' || selectedRating === 'fair') && (
             <form
               onSubmit={onNegativeFeedbackSubmit}
-              className="mt-4 pt-3 border-t border-rose-200 bg-rose-50/50 p-3 rounded-xl"
+              className={`mt-4 pt-3 border-t p-3 rounded-xl ${
+                selectedRating === 'bad'
+                  ? 'border-rose-200 bg-rose-50/50'
+                  : 'border-amber-200 bg-amber-50/50'
+              }`}
             >
-              <div className="flex items-center gap-1.5 text-rose-800 font-bold text-xs mb-1">
+              <div
+                className={`flex items-center gap-1.5 font-bold text-xs mb-1 ${
+                  selectedRating === 'bad' ? 'text-rose-800' : 'text-amber-800'
+                }`}
+              >
                 <i className="fa-solid fa-circle-exclamation"></i>
-                <span>Lütfen Karşılaştığınız Sorunları Seçiniz:</span>
+                <span>
+                  {selectedRating === 'bad'
+                    ? 'Lütfen Karşılaştığınız Sorunları Seçiniz:'
+                    : 'Geliştirilmesi Gereken Hususları Seçebilirsiniz:'}
+                </span>
               </div>
-              <p className="text-[11px] text-slate-500 mb-2">En az bir neden işaretlenmelidir:</p>
+              <p className="text-[11px] text-slate-500 mb-2">
+                {selectedRating === 'bad'
+                  ? 'En az bir neden işaretlenmelidir:'
+                  : 'İyileştirme için geri bildiriminizi iletebilirsiniz:'}
+              </p>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {rootCauses.map((item) => (
                   <label

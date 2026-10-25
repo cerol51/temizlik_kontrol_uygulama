@@ -18,8 +18,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { Request } from 'express';
 import { Repository } from 'typeorm';
-import { AuthenticatedUser, JwtAuthGuard, Public, Roles, RolesGuard } from './auth';
+import { AuthenticatedUser, JwtAuthGuard, Public, Roles, RolesGuard, verifyAppToken } from './auth';
 import {
+  AppUser,
   AuditTrail,
   ChecklistItem,
   ChecklistTemplate,
@@ -43,8 +44,25 @@ import {
 import { NotificationsService } from './notifications.service';
 import { CurrentUser } from './user.decorator';
 
-function getCurrentTimeStr(date = new Date()): string {
-  return date.toTimeString().substring(0, 5);
+export function getCurrentTimeStr(date = new Date()): string {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Istanbul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return formatter.format(date);
+}
+
+export function getStartOfTodayIstanbul(): Date {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const dateStr = formatter.format(new Date());
+  return new Date(`${dateStr}T00:00:00+03:00`);
 }
 
 export function generateIncidentId(): string {
@@ -227,6 +245,8 @@ export class RestroomsController implements OnModuleDestroy {
     private readonly templates: Repository<ChecklistTemplate>,
     @InjectRepository(ChecklistItem)
     private readonly items: Repository<ChecklistItem>,
+    @InjectRepository(AppUser)
+    private readonly usersRepo: Repository<AppUser>,
     private readonly notifications: NotificationsService,
   ) {
     // 10 saniyede bir otomatik eskalasyon kontrolü (2 dakika kuralı)
@@ -281,10 +301,42 @@ export class RestroomsController implements OnModuleDestroy {
   // Tüm mahaller (Public listeleme / seçim)
   @Get(['locations', 'restrooms'])
   @Public()
-  async listLocations() {
-    return this.locations.find({
+  async listLocations(@Req() req: Request) {
+    const authHeader = req.headers?.authorization;
+    let isAdmin = false;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const payload = verifyAppToken(authHeader.substring(7));
+        if (payload?.role === 'admin') {
+          isAdmin = true;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const items = await this.locations.find({
       order: { name: 'ASC' },
     });
+
+    if (isAdmin) {
+      return items;
+    }
+
+    // Proof-of-Presence güvenliği: Token gizlenerek fiziki QR okutma zorunluluğu sağlanır
+    return items.map((loc) => ({
+      ...loc,
+      token: null,
+    }));
+  }
+
+  // Admin için QR Etiketi Token'ını Güvenli Alma Uç Noktası
+  @Get('locations/:id/qr-token')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getLocationQrToken(@Param('id') id: string) {
+    const loc = await this.requireLocation(id);
+    return { id: loc.id, token: loc.token, code: loc.code, name: loc.name };
   }
 
   // Opaque QR Token Çözümleme (Zero-Friction Routing)
@@ -306,8 +358,7 @@ export class RestroomsController implements OnModuleDestroy {
       }),
     ]);
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    const startOfToday = getStartOfTodayIstanbul();
     const todayLogs = recentLogs.filter((log) => new Date(log.createdAt) >= startOfToday);
 
     // KVKK Uyarınca: Ziyaretçiye çalışan adı veya şef denetim detayı sızdırılmaz
@@ -346,8 +397,7 @@ export class RestroomsController implements OnModuleDestroy {
       }),
     ]);
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    const startOfToday = getStartOfTodayIstanbul();
     const todayLogs = recentLogs.filter((log) => new Date(log.createdAt) >= startOfToday);
 
     return {
@@ -394,8 +444,7 @@ export class RestroomsController implements OnModuleDestroy {
       }),
     ]);
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    const startOfToday = getStartOfTodayIstanbul();
     const todayCleanings = cleanings.filter((c) => new Date(c.createdAt) >= startOfToday);
 
     const dailyScheduleStatus = evaluateDailySchedule(
@@ -426,8 +475,8 @@ export class RestroomsController implements OnModuleDestroy {
     const location = await this.requireLocation(locationId);
 
     // P1-1: Proof-of-Presence (Fiziki Varlık Doğrulaması)
-    // Gönderilen QR token mahalin güncel tokenı ile eşleşmelidir
-    if (body.locationToken && body.locationToken !== location.token) {
+    const isVerifiedQr = !!(body.locationToken && body.locationToken === location.token);
+    if (body.locationToken && !isVerifiedQr) {
       throw new BadRequestException('Fiziki varlık doğrulaması başarısız: Geçersiz veya süresi dolmuş QR kod tokenı.');
     }
 
@@ -446,6 +495,7 @@ export class RestroomsController implements OnModuleDestroy {
       slaStatus: sla.status,
       diffMinutes: sla.diff,
       tasksConfirmed: body.tasksConfirmed ?? true,
+      isVerifiedQr,
       note: body.note?.trim() || null,
     });
 
@@ -469,7 +519,9 @@ export class RestroomsController implements OnModuleDestroy {
       location.id,
       'TEMIZLIK_BEYANI',
       `Personel (${staffName})`,
-      `Periyodik temizlik tamamlandı. SLA: ${sla.label} (Hedef: ${sla.targetSlot})`,
+      isVerifiedQr
+        ? `Periyodik temizlik tamamlandı (Fiziki QR Doğrulamalı). SLA: ${sla.label} (Hedef: ${sla.targetSlot})`
+        : `Periyodik temizlik tamamlandı (Manuel/Uzaktan Beyan, QR okutulmadı). SLA: ${sla.label} (Hedef: ${sla.targetSlot})`,
     );
 
     return {
@@ -490,6 +542,12 @@ export class RestroomsController implements OnModuleDestroy {
     const location = await this.requireLocation(locationId);
     const supervisorName = user.name || location.currentSupervisorName || 'Kemal Şef';
 
+    // P1-1: Proof-of-Presence (Fiziki Varlık Doğrulaması)
+    const isVerifiedQr = !!(body.locationToken && body.locationToken === location.token);
+    if (body.locationToken && !isVerifiedQr) {
+      throw new BadRequestException('Fiziki varlık doğrulaması başarısız: Geçersiz veya süresi dolmuş QR kod tokenı.');
+    }
+
     const audit = await this.audits.save({
       id: randomUUID(),
       locationId: location.id,
@@ -497,6 +555,7 @@ export class RestroomsController implements OnModuleDestroy {
       supervisorName,
       templateVersion: body.templateVersion || 'v1.2',
       isApproved: body.isApproved,
+      isVerifiedQr,
       checklistJson: body.checklist,
       note: body.note?.trim() || (body.isApproved ? 'Eksiksiz onaylandı.' : 'Uygunsuzluk tespit edildi.'),
     });
@@ -540,12 +599,28 @@ export class RestroomsController implements OnModuleDestroy {
         ? failedItems.map((f) => `❌ ${f}`)
         : ['⚠️ Şef Denetimi Uygunsuzluğu: ' + (body.note?.trim() || 'Genel uygunsuzluk')];
 
-      // Mahalin son temizlik personelini veya varsayılan personeli ata
+      // Mahalin son temizlik personelini veya veritabanındaki aktif 'employee' personelini ata
       const lastCleaning = await this.cleanings.findOne({
         where: { locationId: location.id },
         order: { createdAt: 'DESC' },
       });
-      const assignedStaffName = lastCleaning?.staffName || 'Ahmet Yılmaz';
+
+      let assignedStaffId: string | null = null;
+      let assignedStaffName = 'Ahmet Temizlik';
+
+      if (lastCleaning && lastCleaning.staffUserId) {
+        assignedStaffId = lastCleaning.staffUserId;
+        assignedStaffName = lastCleaning.staffName;
+      } else {
+        const defaultStaff = await this.usersRepo.findOne({
+          where: { role: 'employee' },
+          order: { createdAt: 'ASC' },
+        });
+        if (defaultStaff) {
+          assignedStaffId = defaultStaff.id;
+          assignedStaffName = defaultStaff.fullName || defaultStaff.username;
+        }
+      }
 
       const incidentId = generateIncidentId();
       correctiveIncident = await this.incidents.save({
@@ -554,6 +629,7 @@ export class RestroomsController implements OnModuleDestroy {
         status: 'DISPATCHED', // Personele müdahale etmesi için doğrudan iletildi
         issuesJson: issues,
         signalCount: 1,
+        assignedStaffId,
         assignedStaffName,
         currentSupId: location.currentSupervisorId,
         currentSupName: location.currentSupervisorName,
@@ -599,8 +675,9 @@ export class RestroomsController implements OnModuleDestroy {
     else if (ratingStr === '1' || ratingStr === '2') ratingStr = 'bad';
 
     // P1-5: Anti-Spam & Kriptografik Cihaz Parmak İzi (Fingerprint)
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.ip) || req.socket?.remoteAddress || '127.0.0.1';
+    // Ters proxy güvenliği: Sadece TRUST_PROXY=true iken proxy başlığına güvenilir, aksi halde soket IP'si alınır
+    const isTrustProxy = process.env.TRUST_PROXY === 'true';
+    const ip = (isTrustProxy ? req.ip : req.socket?.remoteAddress) || '127.0.0.1';
     const ua = req.headers['user-agent'] || 'unknown-ua';
     const dayStr = new Date().toISOString().substring(0, 10);
     const serverFingerprint = createHash('sha256')
@@ -752,7 +829,19 @@ export class RestroomsController implements OnModuleDestroy {
 
     incident.status = 'DISPATCHED';
     incident.assignedStaffName = body.assignedStaffName;
-    incident.assignedStaffId = body.assignedStaffId || 'staff-assigned';
+
+    if (body.assignedStaffId && body.assignedStaffId !== 'staff-assigned') {
+      incident.assignedStaffId = body.assignedStaffId;
+    } else {
+      const staffUser = await this.usersRepo.findOne({
+        where: [
+          { fullName: body.assignedStaffName },
+          { username: body.assignedStaffName },
+        ],
+      });
+      incident.assignedStaffId = staffUser?.id || null;
+    }
+
     await this.incidents.save(incident);
 
     await this.addAudit(
@@ -983,25 +1072,32 @@ export class RestroomsController implements OnModuleDestroy {
 
       for (const inc of openIncidents) {
         if (inc.createdAt < twoMinutesAgo) {
-          inc.isEscalated = true;
-          inc.status = 'ESCALATED';
-          if (inc.backupSupName) inc.currentSupName = inc.backupSupName;
-          await this.incidents.save(inc);
-
-          await this.addAudit(
-            inc.locationId,
-            'ESKALASYON',
-            'Sistem Otopilot',
-            `${inc.id} nolu şikayet 2 dakika yanıtlanmadığı için YEDEK ŞEFE (${inc.backupSupName || 'Yedek'}) devredildi!`,
+          // Çoklu sunucu/pod ortamında çift eskalasyonu ve yarış durumunu önlemek için koşullu atomik UPDATE
+          const nextSupName = inc.backupSupName || inc.currentSupName;
+          const updateResult = await this.incidents.update(
+            { id: inc.id, status: 'OPEN', isEscalated: false },
+            { isEscalated: true, status: 'ESCALATED', currentSupName: nextSupName },
           );
 
-          await this.notifications.dispatchIncidentAlert(
-            inc.id,
-            'Mahal',
-            inc.issuesJson,
-            inc.backupSupName || 'Yedek Şef',
-            true,
-          );
+          if (updateResult.affected && updateResult.affected > 0) {
+            const loc = inc.locationId ? await this.locations.findOne({ where: { id: inc.locationId } }) : null;
+            const locationName = loc?.name || 'Mahal';
+
+            await this.addAudit(
+              inc.locationId,
+              'ESKALASYON',
+              'Sistem Otopilot',
+              `${inc.id} nolu şikayet (${locationName}) 2 dakika yanıtlanmadığı için YEDEK ŞEFE (${inc.backupSupName || 'Yedek'}) devredildi!`,
+            );
+
+            await this.notifications.dispatchIncidentAlert(
+              inc.id,
+              locationName,
+              inc.issuesJson,
+              inc.backupSupName || 'Yedek Şef',
+              true,
+            );
+          }
         }
       }
     } catch {

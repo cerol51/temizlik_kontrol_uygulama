@@ -172,13 +172,25 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.equal(selfDelRes.status, 400);
   });
 
-  await t.test('8. P1-1: Fiziki Varlık Doğrulaması (Proof-of-Presence) - Geçersiz token engellenmeli', async () => {
-    const locsRes = await get('/locations', employeeToken);
-    assert.equal(locsRes.status, 200);
-    assert.ok(locsRes.data.length > 0);
-    const loc = locsRes.data[0];
+  await t.test('8. P1-1: Fiziki Varlık Doğrulaması (Proof-of-Presence) - Token maskeleme ve doğrulama', async () => {
+    // Personel /locations çağırdığında token maskelenmiş (null) olmalı
+    const empLocsRes = await get('/locations', employeeToken);
+    assert.equal(empLocsRes.status, 200);
+    assert.ok(empLocsRes.data.length > 0);
+    const loc = empLocsRes.data[0];
+    assert.equal(loc.token, null, 'Personel genel listeden gizli tokenı okuyamamalı');
 
-    // Sahte/kötü niyetli QR tokenı ile temizlik beyanı denenirse:
+    // Personel admin QR token uç noktasına erişememeli (403 Forbidden)
+    const empQrRes = await get(`/locations/${loc.id}/qr-token`, employeeToken);
+    assert.equal(empQrRes.status, 403);
+
+    // Admin QR tokenı yetkili olarak alabilmeli
+    const adminQrRes = await get(`/locations/${loc.id}/qr-token`, adminToken);
+    assert.equal(adminQrRes.status, 200);
+    const realQrToken = adminQrRes.data.token;
+    assert.ok(realQrToken, 'Admin gerçek tokenı okuyabilmeli');
+
+    // Sahte/kötü niyetli QR tokenı ile temizlik beyanı denenirse 400 Bad Request
     const invalidTokenRes = await post(
       `/locations/${loc.id}/cleanings`,
       {
@@ -191,29 +203,43 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.equal(invalidTokenRes.status, 400);
     assert.match(invalidTokenRes.data.message, /Fiziki varlık doğrulaması başarısız/);
 
-    // Gerçek, sahada okutulan QR tokenı ile temizlik beyanı:
+    // Gerçek, sahada okutulan QR tokenı ile temizlik beyanı -> isVerifiedQr = true
     const validTokenRes = await post(
       `/locations/${loc.id}/cleanings`,
       {
         tasksConfirmed: true,
         note: 'Saha temizliği tamamlandı',
-        locationToken: loc.token,
+        locationToken: realQrToken,
       },
       employeeToken,
     );
     assert.equal(validTokenRes.status, 201);
     assert.ok(validTokenRes.data.record);
-    assert.ok(validTokenRes.data.sla);
+    assert.equal(validTokenRes.data.record.isVerifiedQr, true, 'QR ile yapılan temizlik doğrulanmış olmalı');
+
+    // QR okutulmadan yapılan uzaktan/manuel temizlik beyanı -> isVerifiedQr = false
+    const manualCleanRes = await post(
+      `/locations/${loc.id}/cleanings`,
+      {
+        tasksConfirmed: true,
+        note: 'Manuel uzaktan beyan',
+      },
+      employeeToken,
+    );
+    assert.equal(manualCleanRes.status, 201);
+    assert.equal(manualCleanRes.data.record.isVerifiedQr, false, 'Manuel temizlik unverified olarak işaretlenmeli');
   });
 
   await t.test('9. P1-5: Ziyaretçi Anket Anti-Spam Koruması (3 dakika mükerrer oy engeli)', async () => {
     const locsRes = await get('/locations');
     const loc = locsRes.data[0];
+    const testHash = 'test_device_' + Math.random().toString(36).substring(2, 9);
 
     // İlk anket gönderimi başarılı olmalı
     const survey1 = await post('/surveys', {
       locationId: loc.id,
       rating: 'good',
+      clientHash: testHash,
     });
     assert.equal(survey1.status, 201);
     assert.equal(survey1.data.success, true);
@@ -223,6 +249,7 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
       locationId: loc.id,
       rating: 'bad',
       issues: ['Koku'],
+      clientHash: testHash,
     });
     assert.equal(survey2.status, 400);
     assert.match(survey2.data.message, /kısa süre önce oy kullandınız/);

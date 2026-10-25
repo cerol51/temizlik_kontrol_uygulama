@@ -87,6 +87,11 @@ export class CreateSupervisorAuditDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  locationToken?: string;
 }
 
 // Geriye dönük uyumluluk

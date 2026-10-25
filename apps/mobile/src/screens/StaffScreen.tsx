@@ -234,6 +234,9 @@ export function StaffScreen({ user, token, onLogout }: Props) {
   );
 
   const myPendingTasks = allPendingTasks.filter((inc) => {
+    if (inc.assignedStaffId && user.id && inc.assignedStaffId === user.id) {
+      return true;
+    }
     const assigned = (inc.assignedStaffName || '').toLowerCase();
     return assigned && (assigned.includes(myName) || myName.includes(assigned));
   });

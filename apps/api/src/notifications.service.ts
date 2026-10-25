@@ -71,14 +71,13 @@ export class NotificationsService {
     });
 
     if (this.pushEnabled) {
-      try {
-        await this.sendPush(title, message);
-      } catch (error) {
+      // Push bildirimini ana HTTP yanıtını bekletmeden asenkron arka planda tetikle
+      void this.sendPush(title, message).catch((error) => {
         this.logger.error(
-          'Push bildirimi gönderilemedi.',
+          'Push bildirimi arka planda gönderilemedi.',
           error instanceof Error ? error.stack : String(error),
         );
-      }
+      });
     }
 
     return dispatch;
@@ -139,13 +138,15 @@ export class NotificationsService {
 
   private async sendPush(title: string, message: string): Promise<void> {
     const subscriptions = await this.subscriptions.find();
+    if (subscriptions.length === 0) return;
+
     const payload = JSON.stringify({
       title,
       body: message,
       url: '/',
     });
 
-    for (const subscription of subscriptions) {
+    const pushTasks = subscriptions.map(async (subscription) => {
       try {
         await webPush.sendNotification(
           { endpoint: subscription.endpoint, keys: subscription.keys },
@@ -154,7 +155,7 @@ export class NotificationsService {
       } catch (error) {
         const statusCode =
           typeof error === 'object' && error !== null && 'statusCode' in error
-            ? error.statusCode
+            ? (error as any).statusCode
             : undefined;
         if (statusCode === 404 || statusCode === 410) {
           try {
@@ -172,7 +173,9 @@ export class NotificationsService {
           );
         }
       }
-    }
+    });
+
+    await Promise.allSettled(pushTasks);
   }
 }
 

@@ -117,47 +117,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <i className="fa-solid fa-right-to-bracket"></i> Giriş Yap
             </button>
 
-            {/* Hızlı Demo Giriş Seçenekleri */}
-            <div className="pt-2 border-t border-slate-100">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-2 text-center">
-                Hızlı Demo Giriş Seçenekleri
-              </span>
-              <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginUsername('admin');
-                    setLoginPassword('admin123');
-                  }}
-                  className="p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-left text-[11px] transition"
-                >
-                  <strong className="block text-amber-900 font-bold">👑 Admin</strong>
-                  <span className="text-amber-700 font-mono text-[9px]">admin / admin123</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginUsername('kemal');
-                    setLoginPassword('kemal123');
-                  }}
-                  className="p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg text-left text-[11px] transition"
-                >
-                  <strong className="block text-purple-900 font-bold">👔 Kemal Şef</strong>
-                  <span className="text-purple-600 font-mono text-[9px]">kemal / kemal123</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginUsername('ahmet');
-                    setLoginPassword('ahmet123');
-                  }}
-                  className="p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left text-[11px] transition"
-                >
-                  <strong className="block text-blue-900 font-bold">🧹 Ahmet</strong>
-                  <span className="text-blue-600 font-mono text-[9px]">ahmet / ahmet123</span>
-                </button>
+            {/* Hızlı Demo Giriş Seçenekleri (Yalnızca Geliştirme Ortamında) */}
+            {import.meta.env.DEV && (
+              <div className="pt-2 border-t border-slate-100">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-2 text-center">
+                  Hızlı Demo Giriş Seçenekleri (Geliştirici Modu)
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginUsername('admin');
+                      setLoginPassword('admin123');
+                    }}
+                    className="p-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-left text-[11px] transition"
+                  >
+                    <strong className="block text-amber-900 font-bold">👑 Admin</strong>
+                    <span className="text-amber-700 font-mono text-[9px]">admin / admin123</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginUsername('kemal');
+                      setLoginPassword('kemal123');
+                    }}
+                    className="p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg text-left text-[11px] transition"
+                  >
+                    <strong className="block text-purple-900 font-bold">👔 Kemal Şef</strong>
+                    <span className="text-purple-600 font-mono text-[9px]">kemal / kemal123</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginUsername('ahmet');
+                      setLoginPassword('ahmet123');
+                    }}
+                    className="p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left text-[11px] transition"
+                  >
+                    <strong className="block text-blue-900 font-bold">🧹 Ahmet</strong>
+                    <span className="text-blue-600 font-mono text-[9px]">ahmet / ahmet123</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="text-center pt-1">
               <span className="text-xs text-slate-500">Hesabınız yok mu? </span>
