@@ -8,7 +8,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { getApiBaseUrl, loginApi, setApiBaseUrl , showAlert } from '../api';
+import {
+  getApiBaseUrl,
+  getBundleServerUrl,
+  loginApi,
+  setApiBaseUrl,
+  showAlert,
+  testConnectionApi,
+} from '../api';
 import { AppUser } from '../types';
 import { QrScannerModal } from '../components/QrScannerModal';
 
@@ -24,13 +31,36 @@ export function LoginScreen({ onLoginSuccess, onScanGuestQr }: Props) {
   const [loading, setLoading] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
 
-  // Server settings modal
+  // Server settings modal & connection diagnostics
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [customServerUrl, setCustomServerUrl] = useState('');
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
     setCustomServerUrl(getApiBaseUrl());
   }, []);
+
+  async function handleTestConnection(targetUrl?: string) {
+    const urlToTest = targetUrl || customServerUrl || getApiBaseUrl();
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await testConnectionApi(urlToTest);
+      setTestResult(res);
+    } catch (err: any) {
+      setTestResult({ ok: false, message: err?.message || 'Bağlantı kurulamadı.' });
+    } finally {
+      setTestingConnection(false);
+    }
+  }
+
+  function handleOpenSettings() {
+    const current = getApiBaseUrl();
+    setCustomServerUrl(current);
+    setSettingsModalOpen(true);
+    handleTestConnection(current);
+  }
 
   async function handleLogin(userParam?: string, passParam?: string) {
     const u = userParam || username;
@@ -169,10 +199,10 @@ export function LoginScreen({ onLoginSuccess, onScanGuestQr }: Props) {
         {/* Server Config Settings Link */}
         <TouchableOpacity
           style={styles.settingsLink}
-          onPress={() => setSettingsModalOpen(true)}
+          onPress={handleOpenSettings}
         >
           <Text style={styles.settingsLinkText}>
-            ⚙️ Sunucu Ayarı: {customServerUrl || getApiBaseUrl()}
+            ⚙️ Sunucu: {customServerUrl || getApiBaseUrl()}
           </Text>
         </TouchableOpacity>
       </View>
@@ -189,30 +219,126 @@ export function LoginScreen({ onLoginSuccess, onScanGuestQr }: Props) {
             <TextInput
               style={styles.serverInput}
               value={customServerUrl}
-              onChangeText={setCustomServerUrl}
-              placeholder="http://192.168.1.100:3000/api"
+              onChangeText={(text) => {
+                setCustomServerUrl(text);
+                setTestResult(null);
+              }}
+              placeholder="http://192.168.1.106:3000/api"
               placeholderTextColor="#64748b"
               autoCapitalize="none"
             />
 
-            <View style={styles.presetRow}>
+            {/* Live Connection Diagnostics Badge */}
+            <View style={styles.testStatusRow}>
+              {testingConnection ? (
+                <View style={[styles.testBadge, styles.testBadgeTesting]}>
+                  <ActivityIndicator size="small" color="#38bdf8" />
+                  <Text style={styles.testBadgeText}>Test ediliyor...</Text>
+                </View>
+              ) : testResult ? (
+                <View
+                  style={[
+                    styles.testBadge,
+                    testResult.ok ? styles.testBadgeOk : styles.testBadgeErr,
+                  ]}
+                >
+                  <Text style={styles.testBadgeIcon}>{testResult.ok ? '✓' : '⚠️'}</Text>
+                  <Text
+                    style={[
+                      styles.testBadgeText,
+                      testResult.ok ? styles.textOk : styles.textErr,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {testResult.message}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.testBadgeEmpty} />
+              )}
+
+              <TouchableOpacity
+                style={styles.testActionBtn}
+                onPress={() => handleTestConnection()}
+                disabled={testingConnection}
+              >
+                <Text style={styles.testActionText}>⚡ Test Et</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.presetHeading}>HIZLI BAĞLANTI SEÇENEKLERİ:</Text>
+            <View style={styles.presetWrap}>
+              {getBundleServerUrl() && (
+                <TouchableOpacity
+                  style={[styles.presetBtn, styles.presetBtnHighlight]}
+                  onPress={() => {
+                    const u = `${getBundleServerUrl()}/api`;
+                    setCustomServerUrl(u);
+                    handleTestConnection(u);
+                  }}
+                >
+                  <Text style={styles.presetBtnHighlightText}>🔄 Cihaz Hostu</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.presetBtn}
-                onPress={() => setCustomServerUrl('http://192.168.1.106:3000/api')}
+                onPress={() => {
+                  const u = 'https://hgaxaio-anonymous-8081.exp.direct/api';
+                  setCustomServerUrl(u);
+                  handleTestConnection(u);
+                }}
               >
-                <Text style={styles.presetBtnText}>Wi-Fi (192.168.1.106)</Text>
+                <Text style={styles.presetBtnText}>🌐 Ngrok Tunnel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.presetBtn}
-                onPress={() => setCustomServerUrl('http://localhost:3000/api')}
+                onPress={() => {
+                  const u = 'http://192.168.1.106:3000/api';
+                  setCustomServerUrl(u);
+                  handleTestConnection(u);
+                }}
               >
-                <Text style={styles.presetBtnText}>Localhost</Text>
+                <Text style={styles.presetBtnText}>📶 Wi-Fi (3000)</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.presetBtn}
-                onPress={() => setCustomServerUrl('http://10.0.2.2:3000/api')}
+                onPress={() => {
+                  const u = 'http://192.168.1.106:8081/api';
+                  setCustomServerUrl(u);
+                  handleTestConnection(u);
+                }}
               >
-                <Text style={styles.presetBtnText}>Android</Text>
+                <Text style={styles.presetBtnText}>🔀 Metro (8081)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetBtn}
+                onPress={() => {
+                  const u = '/api';
+                  setCustomServerUrl(u);
+                  handleTestConnection(u);
+                }}
+              >
+                <Text style={styles.presetBtnText}>💻 Web (/api)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetBtn}
+                onPress={() => {
+                  const u = 'http://10.0.2.2:3000/api';
+                  setCustomServerUrl(u);
+                  handleTestConnection(u);
+                }}
+              >
+                <Text style={styles.presetBtnText}>🤖 Android</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.presetBtn}
+                onPress={() => {
+                  const u = 'http://localhost:3000/api';
+                  setCustomServerUrl(u);
+                  handleTestConnection(u);
+                }}
+              >
+                <Text style={styles.presetBtnText}>🏠 Localhost</Text>
               </TouchableOpacity>
             </View>
 
@@ -224,7 +350,7 @@ export function LoginScreen({ onLoginSuccess, onScanGuestQr }: Props) {
                 <Text style={styles.modalCancelText}>Kapat</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSave} onPress={handleSaveServerUrl}>
-                <Text style={styles.modalSaveText}>Kaydet</Text>
+                <Text style={styles.modalSaveText}>Kaydet ve Kullan</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -437,10 +563,75 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     fontSize: 13,
   },
-  presetRow: {
+  testStatusRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginTop: 10,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  testBadgeEmpty: {
+    flex: 1,
+  },
+  testBadge: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  testBadgeTesting: {
+    backgroundColor: '#0c4a6e',
+  },
+  testBadgeOk: {
+    backgroundColor: '#064e3b',
+    borderWidth: 1,
+    borderColor: '#059669',
+  },
+  testBadgeErr: {
+    backgroundColor: '#450a0a',
+    borderWidth: 1,
+    borderColor: '#dc2626',
+  },
+  testBadgeIcon: {
+    fontSize: 12,
+  },
+  testBadgeText: {
+    fontSize: 11,
+    color: '#cbd5e1',
+    flex: 1,
+  },
+  textOk: {
+    color: '#34d399',
+    fontWeight: '600',
+  },
+  textErr: {
+    color: '#f87171',
+  },
+  testActionBtn: {
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  testActionText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  presetHeading: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 6,
+    marginTop: 2,
+  },
+  presetWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 16,
   },
   presetBtn: {
@@ -448,6 +639,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
+  },
+  presetBtnHighlight: {
+    backgroundColor: '#0369a1',
+    borderColor: '#38bdf8',
+    borderWidth: 1,
+  },
+  presetBtnHighlightText: {
+    color: '#e0f2fe',
+    fontSize: 11,
+    fontWeight: '700',
   },
   presetBtnText: {
     color: '#cbd5e1',
