@@ -620,6 +620,33 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.ok(readiness.checks.memory.heapUsedMb > 0);
     assert.ok(readiness.checks.process.uptimeSeconds >= 0);
   });
+
+  await t.test('20. Faz-2: Kurumsal Observability, Prometheus Metrikleri (/metrics) ve X-Correlation-ID Dağıtık İzleme', async () => {
+    // 1. X-Correlation-ID header iletimi
+    const customTraceId = 'trace-enterprise-test-12345';
+    const traceRes = await fetch(`${API}/health`, {
+      headers: { 'X-Correlation-Id': customTraceId },
+    });
+    assert.equal(traceRes.status, 200);
+    assert.equal(traceRes.headers.get('x-correlation-id'), customTraceId, 'Gönderilen X-Correlation-ID yanıtta dönmeli');
+
+    // 2. Otomatik üretilen X-Correlation-ID
+    const autoTraceRes = await fetch(`${API}/health`);
+    assert.equal(autoTraceRes.status, 200);
+    const generatedId = autoTraceRes.headers.get('x-correlation-id');
+    assert.ok(generatedId, 'X-Correlation-Id otomatik üretilmeli');
+    assert.ok(generatedId.length >= 16, 'Correlation ID geçerli uzunlukta olmalı');
+
+    // 3. Prometheus /metrics exposition format doğrulaması
+    const metricsRes = await fetch(`${API}/metrics`);
+    assert.equal(metricsRes.status, 200);
+    assert.ok(metricsRes.headers.get('content-type')?.includes('text/plain'));
+    const metricsText = await metricsRes.text();
+    assert.match(metricsText, /process_uptime_seconds \d+/);
+    assert.match(metricsText, /process_resident_memory_bytes \d+/);
+    assert.match(metricsText, /nodejs_heap_size_used_bytes \d+/);
+    assert.match(metricsText, /wc_active_open_incidents \d+/);
+  });
 });
 
 

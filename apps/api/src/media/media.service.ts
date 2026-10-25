@@ -62,7 +62,8 @@ export class MediaService {
 
     await fs.promises.writeFile(targetPath, buffer);
 
-    return `/api/media/${filename}`;
+    const publicBase = process.env.STORAGE_PUBLIC_BASE_URL?.replace(/\/+$/, '');
+    return publicBase ? `${publicBase}/${filename}` : `/api/media/${filename}`;
   }
 
   getFilePath(filename: string): { filePath: string; mimeType: string } {

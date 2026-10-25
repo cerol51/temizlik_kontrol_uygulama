@@ -8,11 +8,12 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { Repository } from 'typeorm';
 import { AuthenticatedUser, extractTokenFromRequest, JwtAuthGuard, Public, Roles, RolesGuard, verifyAppToken } from './auth';
 import {
@@ -26,7 +27,7 @@ import {
   UpdateScheduleDto,
   VerifyCloseIncidentDto,
 } from './dto';
-import { ChecklistItem, ChecklistTemplate } from './entities';
+import { ChecklistItem, ChecklistTemplate, Incident } from './entities';
 import { CurrentUser } from './user.decorator';
 import { SlaService } from './domain/sla/sla.service';
 import { LocationsService } from './domain/locations/locations.service';
@@ -96,6 +97,41 @@ export class RestroomsController {
       },
       timestamp: new Date().toISOString(),
     };
+  }
+
+  // Kurumsal Prometheus / OpenMetrics Metrik Uç Noktası
+  @Get('metrics')
+  @Public()
+  async getMetrics(@Res() res: Response) {
+    const mem = process.memoryUsage();
+    const uptime = Math.round(process.uptime());
+    let openIncidentsCount = 0;
+    try {
+      openIncidentsCount = await this.items.manager.count(Incident, { where: { status: 'OPEN' } });
+    } catch {
+      // ignore
+    }
+
+    const metrics = [
+      '# HELP process_uptime_seconds The uptime of the process in seconds.',
+      '# TYPE process_uptime_seconds gauge',
+      `process_uptime_seconds ${uptime}`,
+      '# HELP process_resident_memory_bytes Resident memory size in bytes.',
+      '# TYPE process_resident_memory_bytes gauge',
+      `process_resident_memory_bytes ${mem.rss}`,
+      '# HELP nodejs_heap_size_used_bytes Process heap size used in bytes.',
+      '# TYPE nodejs_heap_size_used_bytes gauge',
+      `nodejs_heap_size_used_bytes ${mem.heapUsed}`,
+      '# HELP nodejs_heap_size_total_bytes Process heap size total in bytes.',
+      '# TYPE nodejs_heap_size_total_bytes gauge',
+      `nodejs_heap_size_total_bytes ${mem.heapTotal}`,
+      '# HELP wc_active_open_incidents Current number of open unresolved incidents.',
+      '# TYPE wc_active_open_incidents gauge',
+      `wc_active_open_incidents ${openIncidentsCount}`,
+    ];
+
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.send(metrics.join('\n') + '\n');
   }
 
   // Sürümlü Aktif Checklist Şablonunu Getir
