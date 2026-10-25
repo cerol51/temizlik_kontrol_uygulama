@@ -77,9 +77,10 @@ export function StaffScreen({ user, token, onLogout }: Props) {
   }, []);
 
   useEffect(() => {
+    // Kurumsal Mobil Optimizasyonu: Batarya ve 4G kotasını korumak için 25s aralıkla arka plan senkronizasyonu
     const interval = setInterval(() => {
       void refreshLocationData();
-    }, 5000);
+    }, 25000);
     return () => clearInterval(interval);
   }, [selectedLocation?.id, token]);
 

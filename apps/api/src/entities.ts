@@ -3,6 +3,9 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
   PrimaryColumn,
   Unique,
 } from 'typeorm';
@@ -33,6 +36,10 @@ export class Location {
 
   @Column({ name: 'project_id', type: 'uuid', nullable: true })
   projectId: string | null;
+
+  @ManyToOne(() => Project, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'project_id' })
+  project?: Project | null;
 
   @Column({ length: 60, unique: true })
   code: string;
@@ -101,6 +108,10 @@ export class ChecklistItem {
   @Column({ name: 'template_id', type: 'uuid' })
   templateId: string;
 
+  @ManyToOne(() => ChecklistTemplate, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'template_id' })
+  template?: ChecklistTemplate;
+
   @Column({ name: 'item_order', type: 'int' })
   itemOrder: number;
 
@@ -117,6 +128,10 @@ export class CleaningRecord {
 
   @Column({ name: 'location_id', type: 'uuid' })
   locationId: string;
+
+  @ManyToOne(() => Location, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'location_id' })
+  location?: Location;
 
   @Column({ name: 'staff_user_id', length: 120 })
   staffUserId: string;
@@ -163,6 +178,10 @@ export class SupervisorAudit {
   @Column({ name: 'location_id', type: 'uuid' })
   locationId: string;
 
+  @ManyToOne(() => Location, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'location_id' })
+  location?: Location;
+
   @Column({ name: 'supervisor_id', length: 120 })
   supervisorId: string;
 
@@ -204,6 +223,10 @@ export class Incident {
 
   @Column({ name: 'location_id', type: 'uuid' })
   locationId: string;
+
+  @ManyToOne(() => Location, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'location_id' })
+  location?: Location;
 
   @Column({ length: 30, default: 'OPEN' })
   status: string; // OPEN, ESCALATED, DISPATCHED, RESOLVED_BY_STAFF, VERIFIED_CLOSED
@@ -263,6 +286,10 @@ export class NotificationDispatch {
   @Column({ name: 'incident_id', length: 60 })
   incidentId: string;
 
+  @ManyToOne(() => Incident, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'incident_id' })
+  incident?: Incident;
+
   @Column({ name: 'recipient_user_id', length: 120 })
   recipientUserId: string;
 
@@ -292,6 +319,10 @@ export class SurveyFeedback {
 
   @Column({ name: 'location_id', type: 'uuid' })
   locationId: string;
+
+  @ManyToOne(() => Location, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'location_id' })
+  location?: Location;
 
   @Column({ length: 20 })
   rating: string; // 'good', 'fair', 'bad'

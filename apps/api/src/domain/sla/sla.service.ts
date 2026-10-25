@@ -23,15 +23,23 @@ export function getStartOfTodayIstanbul(): Date {
 }
 
 export function generateIncidentId(): string {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mi = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const map: Record<string, string> = {};
+  for (const p of parts) {
+    map[p.type] = p.value;
+  }
   const rand = Math.floor(1000 + Math.random() * 9000);
-  return `INC-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rand}`;
+  return `INC-${map.year}${map.month}${map.day}-${map.hour}${map.minute}${map.second}-${rand}`;
 }
 
 export function evaluateSLA(

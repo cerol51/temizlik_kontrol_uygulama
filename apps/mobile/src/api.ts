@@ -50,20 +50,18 @@ export function getCandidateApiUrls(): string[] {
     }
   }
 
-  // 4. Known active tunnel URL
-  candidates.push('https://hgaxaio-anonymous-8081.exp.direct/api');
+  // 4. Configured tunnel or custom environment host
+  if (process.env.EXPO_PUBLIC_TUNNEL_URL) {
+    candidates.push(process.env.EXPO_PUBLIC_TUNNEL_URL.replace(/\/+$/, '') + '/api');
+  }
 
-  // 5. Host machine LAN Wi-Fi IP
-  candidates.push('http://192.168.1.106:3000/api');
-  candidates.push('http://192.168.1.106:8081/api');
-
-  // 6. Android emulator loopback
+  // 5. Android emulator loopback
   if (Platform.OS === 'android') {
     candidates.push('http://10.0.2.2:3000/api');
     candidates.push('http://10.0.2.2:8081/api');
   }
 
-  // 7. Localhost fallback
+  // 6. Localhost fallback
   candidates.push('http://localhost:3000/api');
 
   // Deduplicate while preserving order
@@ -74,15 +72,14 @@ function getDefaultApiUrl(): string {
   if (typeof window !== 'undefined' && window.location) {
     return '/api';
   }
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
   const bundleHost = getBundleServerUrl();
   if (bundleHost) {
     return `${bundleHost}/api`;
   }
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  // Default to LAN IP which is reachable by physical phones
-  return 'http://192.168.1.106:3000/api';
+  return 'http://localhost:3000/api';
 }
 
 const STORAGE_API_KEY = 'wc_mobile_api_url';

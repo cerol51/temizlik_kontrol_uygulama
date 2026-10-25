@@ -162,7 +162,7 @@ export async function api<T>(
   token?: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  let response = await fetch(`/api${path}`, {
     credentials: 'include',
     ...init,
     headers: {
@@ -171,6 +171,50 @@ export async function api<T>(
       ...init.headers,
     },
   });
+
+  // Kurumsal Standart: 401 Unauthorized durumunda araya girip (interceptor)
+  // HttpOnly cookie veya refresh token ile oturumu sessizce yenile ve isteği tekrar dene.
+  if (
+    response.status === 401 &&
+    !path.startsWith('/auth/login') &&
+    !path.startsWith('/auth/refresh') &&
+    !path.startsWith('/auth/register')
+  ) {
+    try {
+      const refreshRes = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        const newToken = refreshData.accessToken || refreshData.token;
+        if (newToken) {
+          try {
+            const rawUser = localStorage.getItem('wc_user');
+            if (rawUser) {
+              localStorage.setItem('wc_token', newToken);
+            }
+          } catch {
+            // ignore localStorage error
+          }
+
+          // İsteği yeni access token ile tekrar dene
+          response = await fetch(`/api${path}`, {
+            credentials: 'include',
+            ...init,
+            headers: {
+              ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+              Authorization: `Bearer ${newToken}`,
+              ...init.headers,
+            },
+          });
+        }
+      }
+    } catch {
+      // Refresh başarısız olursa orijinal 401 hatası ile devam et
+    }
+  }
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);

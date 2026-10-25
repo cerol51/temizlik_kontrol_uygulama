@@ -72,7 +72,7 @@ export class NotificationsService {
 
     if (this.pushEnabled) {
       // Push bildirimini ana HTTP yanıtını bekletmeden asenkron arka planda tetikle
-      void this.sendPush(title, message).catch((error) => {
+      void this.sendPush(title, message, recipientSupervisorName).catch((error) => {
         this.logger.error(
           'Push bildirimi arka planda gönderilemedi.',
           error instanceof Error ? error.stack : String(error),
@@ -136,9 +136,13 @@ export class NotificationsService {
     }
   }
 
-  private async sendPush(title: string, message: string): Promise<void> {
-    const subscriptions = await this.subscriptions.find();
-    if (subscriptions.length === 0) return;
+  private async sendPush(title: string, message: string, supervisorId?: string): Promise<void> {
+    const subscriptions = supervisorId
+      ? await this.subscriptions.find({ where: { supervisorId } })
+      : await this.subscriptions.find();
+    // Hedef supervisor'ın aboneliği yoksa veya genel ise tüm aktif aboneliklere fallback yap
+    const activeSubs = subscriptions.length > 0 ? subscriptions : await this.subscriptions.find();
+    if (activeSubs.length === 0) return;
 
     const payload = JSON.stringify({
       title,

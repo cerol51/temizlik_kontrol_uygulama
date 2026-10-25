@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Response } from 'express';
-import { Repository } from 'typeorm';
+import { MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { JwtAuthGuard, Roles, RolesGuard } from './auth';
 import {
   AuditTrail,
@@ -41,21 +41,38 @@ export class ReportsController {
 
   @Get('dashboard')
   async getDashboardData() {
-    const [locations, cleanings, audits, surveys, incidents, auditLogs] = await Promise.all([
-      this.locations.find({ order: { name: 'ASC' } }),
-      this.cleanings.find({ order: { createdAt: 'DESC' } }),
-      this.audits.find({ order: { createdAt: 'DESC' } }),
-      this.surveys.find({ order: { createdAt: 'DESC' } }),
-      this.incidents.find({ order: { createdAt: 'DESC' } }),
-      this.auditTrail.find({ order: { createdAt: 'DESC' }, take: 50 }),
-    ]);
-
     const startOfToday = getStartOfTodayIstanbul();
 
-    // 1. Temizlik KPI'ları ve Kaçırılan (MISSED) Slot Tespiti (Bugünün verileri üzerinden)
-    const todayCleanings = cleanings.filter(
-      (c) => new Date(c.createdAt) >= startOfToday && locations.some((l) => l.id === c.locationId),
-    );
+    // Veritabanı Optimizasyonu: Belleğe tüm tabloları çekmek (OOM çöküşü) yerine indeksli ve filtrelenmiş alt kümeler çekilir.
+    const [locations, todayCleanings, todayAudits, todaySurveys, activeIncidents, closedIncidents, recentSurveysForPareto, auditLogs] = await Promise.all([
+      this.locations.find({ order: { name: 'ASC' } }),
+      this.cleanings.find({
+        where: { createdAt: MoreThanOrEqual(startOfToday) },
+        order: { createdAt: 'DESC' },
+      }),
+      this.audits.find({
+        where: { createdAt: MoreThanOrEqual(startOfToday) },
+        order: { createdAt: 'DESC' },
+      }),
+      this.surveys.find({
+        where: { createdAt: MoreThanOrEqual(startOfToday) },
+        order: { createdAt: 'DESC' },
+      }),
+      this.incidents.find({
+        where: { status: Not('VERIFIED_CLOSED') },
+        order: { createdAt: 'DESC' },
+      }),
+      this.incidents.find({
+        where: { status: 'VERIFIED_CLOSED' },
+        order: { createdAt: 'DESC' },
+        take: 100,
+      }),
+      this.surveys.find({
+        order: { createdAt: 'DESC' },
+        take: 500,
+      }),
+      this.auditTrail.find({ order: { createdAt: 'DESC' }, take: 50 }),
+    ]);
     const totalCleans = todayCleanings.length;
     let onTimeCount = 0;
     let outOfTimeCount = 0;
@@ -72,9 +89,6 @@ export class ReportsController {
     const notDoneRate = totalCleans > 0 ? Math.round((notDoneCount / totalCleans) * 100) : 0;
 
     // 2. CSAT Hesaplaması (Bugünün anketleri üzerinden)
-    const todaySurveys = surveys.filter(
-      (s) => new Date(s.createdAt) >= startOfToday && locations.some((l) => l.id === s.locationId),
-    );
     const totalSurveys = todaySurveys.length;
     const goodSurveys = todaySurveys.filter(
       (s) => s.rating === 'good' || s.rating === '5' || s.rating === '4',
@@ -82,9 +96,6 @@ export class ReportsController {
     const csatRate = totalSurveys > 0 ? Math.round((goodSurveys / totalSurveys) * 100) : 100;
 
     // 3. Ortalama Müdahale Süresi (MTTR - dakika)
-    const closedIncidents = incidents.filter(
-      (i) => i.status === 'VERIFIED_CLOSED' && i.resolvedAtUtc,
-    );
     let totalResolutionMinutes = 0;
     closedIncidents.forEach((inc) => {
       if (inc.resolvedAtUtc) {
@@ -98,18 +109,15 @@ export class ReportsController {
         : 8;
 
     // 4. Denetim Kapsama Oranı (Bugün denetlenen aktif mahaller)
-    const todayAudits = audits.filter(
-      (a) => new Date(a.createdAt) >= startOfToday && locations.some((l) => l.id === a.locationId),
-    );
     const auditedLocationIds = new Set(todayAudits.map((a) => a.locationId));
     const auditCoverageRate =
       locations.length > 0
         ? Math.min(100, Math.round((auditedLocationIds.size / locations.length) * 100))
         : 100;
 
-    // 5. Pareto Analizi (Kök Nedenler)
+    // 5. Pareto Analizi (Kök Nedenler - Son anketler üzerinden)
     const paretoCounts: Record<string, number> = {};
-    surveys.forEach((s) => {
+    recentSurveysForPareto.forEach((s) => {
       if (s.issuesJson && Array.isArray(s.issuesJson)) {
         s.issuesJson.forEach((issue) => {
           paretoCounts[issue] = (paretoCounts[issue] || 0) + 1;
@@ -126,16 +134,13 @@ export class ReportsController {
     let totalMissedSlotsToday = 0;
 
     const locationMatrix = locations.map((loc) => {
-      const locCleanings = cleanings.filter((c) => c.locationId === loc.id);
-      const todayLocCleanings = locCleanings.filter((c) => new Date(c.createdAt) >= startOfToday);
-      const lastClean = locCleanings.length > 0 ? locCleanings[0] : null;
+      const todayLocCleanings = todayCleanings.filter((c) => c.locationId === loc.id);
+      const lastClean = todayLocCleanings.length > 0 ? todayLocCleanings[0] : null;
 
-      const locAudits = audits.filter((a) => a.locationId === loc.id);
+      const locAudits = todayAudits.filter((a) => a.locationId === loc.id);
       const lastAudit = locAudits.length > 0 ? locAudits[0] : null;
 
-      const activeIncident = incidents.find(
-        (i) => i.locationId === loc.id && i.status !== 'VERIFIED_CLOSED',
-      );
+      const activeIncident = activeIncidents.find((i) => i.locationId === loc.id);
 
       const dailySchedule = evaluateDailySchedule(
         loc.schedule || [],
@@ -193,17 +198,15 @@ export class ReportsController {
       paretoData,
       locationMatrix,
       auditLogs,
-      allIncidents: incidents
-        .filter((i) => i.status !== 'VERIFIED_CLOSED')
-        .map((inc) => {
-          const loc = locations.find((l) => l.id === inc.locationId);
-          return {
-            ...inc,
-            photoUrl: inc.status === 'RESOLVED_BY_STAFF' ? inc.photoUrl : null,
-            locationName: loc ? loc.name : inc.locationId,
-            locationCode: loc ? loc.code : '',
-          };
-        }),
+      allIncidents: activeIncidents.map((inc) => {
+        const loc = locations.find((l) => l.id === inc.locationId);
+        return {
+          ...inc,
+          photoUrl: inc.status === 'RESOLVED_BY_STAFF' ? inc.photoUrl : null,
+          locationName: loc ? loc.name : inc.locationId,
+          locationCode: loc ? loc.code : '',
+        };
+      }),
     };
   }
 

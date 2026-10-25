@@ -99,8 +99,8 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   }, []);
 
   useEffect(() => {
+    // Kurumsal Mobil Optimizasyonu: Batarya ve 4G kotasını korumak için 25s aralıkla arka plan senkronizasyonu
     const interval = setInterval(() => {
-      // Arka plan otomatik senkronizasyon (5 saniye)
       Promise.all([
         fetchAllIncidentsApi(token),
         selectedLocation ? fetchSupervisorStatusApi(selectedLocation.id, token).catch(() => null) : null,
@@ -108,7 +108,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
         if (incs) setAllIncidents(incs);
         if (status) setSupStatus(status);
       }).catch(() => {});
-    }, 5000);
+    }, 25000);
     return () => clearInterval(interval);
   }, [selectedLocation?.id, token]);
 
