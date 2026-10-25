@@ -369,15 +369,19 @@ export async function createCleaningApi(
     staffName: string;
     items?: string[];
     note?: string;
+    idempotencyKey?: string;
   },
   token: string,
 ): Promise<any> {
+  const idempotencyKey =
+    data.idempotencyKey || `mob_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   return apiRequest(`/locations/${data.locationId}/cleanings`, token, {
     method: 'POST',
     body: JSON.stringify({
       tasksConfirmed: true,
       note: data.note || 'Rutin temizlik tamamlandı.',
       locationToken: data.locationToken,
+      idempotencyKey,
     }),
   });
 }
