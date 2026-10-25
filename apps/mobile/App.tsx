@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { secureStorage } from './src/secureStorage';
 import { initApiBaseUrl } from './src/api';
 import { AppUser } from './src/types';
 import { LoginScreen } from './src/screens/LoginScreen';
@@ -41,8 +41,8 @@ export default function App() {
       }
 
       const [savedUser, savedToken] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_AUTH_USER),
-        AsyncStorage.getItem(STORAGE_AUTH_TOKEN),
+        secureStorage.getItem(STORAGE_AUTH_USER),
+        secureStorage.getItem(STORAGE_AUTH_TOKEN),
       ]);
       if (savedUser && savedToken) {
         setUser(JSON.parse(savedUser));
@@ -61,8 +61,8 @@ export default function App() {
     setIsGuestMode(false);
     setScannedGuestToken(null);
     await Promise.all([
-      AsyncStorage.setItem(STORAGE_AUTH_USER, JSON.stringify(authUser)),
-      AsyncStorage.setItem(STORAGE_AUTH_TOKEN, authToken),
+      secureStorage.setItem(STORAGE_AUTH_USER, JSON.stringify(authUser)),
+      secureStorage.setItem(STORAGE_AUTH_TOKEN, authToken),
     ]);
   }
 
@@ -72,8 +72,8 @@ export default function App() {
     setIsGuestMode(false);
     setScannedGuestToken(null);
     await Promise.all([
-      AsyncStorage.removeItem(STORAGE_AUTH_USER),
-      AsyncStorage.removeItem(STORAGE_AUTH_TOKEN),
+      secureStorage.removeItem(STORAGE_AUTH_USER),
+      secureStorage.removeItem(STORAGE_AUTH_TOKEN),
     ]);
   }
 

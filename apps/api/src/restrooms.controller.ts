@@ -163,6 +163,7 @@ export class RestroomsController {
   // Opaque QR Token Çözümleme (Zero-Friction Routing)
   @Get('q/:token')
   @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async resolveByToken(@Param('token') token: string) {
     return this.locationsService.resolveByToken(token);
   }
@@ -170,6 +171,7 @@ export class RestroomsController {
   // Mahal Detay & Durum Bilgisi (Public / Misafir)
   @Get(['locations/:id/public', 'restrooms/:id/public'])
   @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async publicStatus(@Param('id') id: string) {
     return this.locationsService.getPublicStatus(id);
   }
