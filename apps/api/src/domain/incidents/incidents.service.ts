@@ -28,6 +28,7 @@ import {
 } from '../../entities';
 import { NotificationsService } from '../../notifications.service';
 import { SlaService } from '../sla/sla.service';
+import { MediaService } from '../../media/media.service';
 
 @Injectable()
 export class IncidentsService implements OnModuleDestroy {
@@ -50,6 +51,7 @@ export class IncidentsService implements OnModuleDestroy {
     private readonly auditTrailRepo: Repository<AuditTrail>,
     private readonly notificationsService: NotificationsService,
     private readonly slaService: SlaService,
+    private readonly mediaService: MediaService,
     private readonly dataSource: DataSource,
   ) {
     // 10 saniyede bir otomatik eskalasyon kontrolü (2 dakika kuralı)
@@ -487,7 +489,9 @@ export class IncidentsService implements OnModuleDestroy {
       incident.resolvedAt = currentTime;
       incident.resolvedAtUtc = new Date();
       incident.resolutionNote = body.note || 'Sarf malzemeleri ikmal edildi, dezenfeksiyon yapıldı.';
-      if (body.photoUrl) incident.photoUrl = body.photoUrl;
+      if (body.photoUrl) {
+        incident.photoUrl = await this.mediaService.saveBase64Image(body.photoUrl);
+      }
       incident.assignedStaffName = body.staffName || incident.assignedStaffName || user.name || 'Personel';
 
       await manager.save(Incident, incident);

@@ -332,5 +332,113 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.equal(result.onTimeCount, 1, 'Zamanında slot sayısı 1 olmalı');
     assert.equal(result.pendingCount, 2, 'Bekleyen slot sayısı 2 olmalı');
   });
+
+  await t.test('13. P2-1: HttpOnly Güvenli Cookie Doğrulaması, /auth/refresh ve /auth/logout', async () => {
+    // 1. Giriş yaparken Set-Cookie başlığında wc_token gelmeli
+    const loginRes = await fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+    });
+    assert.equal(loginRes.status, 201);
+    const setCookie = loginRes.headers.get('set-cookie');
+    assert.ok(setCookie, 'Set-Cookie başlığı dönmeli');
+    assert.match(setCookie, /wc_token=/);
+    assert.match(setCookie, /HttpOnly/i);
+
+    // 2. Cookie ile Authorization header olmadan /auth/me çağrılabilmeli
+    const cookieToken = setCookie.split(';')[0];
+    const meRes = await fetch(`${API}/auth/me`, {
+      headers: { Cookie: cookieToken },
+    });
+    assert.equal(meRes.status, 200);
+    const meData = await meRes.json();
+    assert.equal(meData.username, 'admin');
+
+    // 3. /auth/refresh ile token ve cookie yenilenebilmeli
+    const refreshRes = await fetch(`${API}/auth/refresh`, {
+      method: 'POST',
+      headers: { Cookie: cookieToken },
+    });
+    assert.equal(refreshRes.status, 201);
+    const refreshData = await refreshRes.json();
+    assert.ok(refreshData.token);
+    assert.ok(refreshRes.headers.get('set-cookie'));
+
+    // 4. /auth/logout ile cookie temizlenmeli
+    const logoutRes = await fetch(`${API}/auth/logout`, {
+      method: 'POST',
+      headers: { Cookie: cookieToken },
+    });
+    assert.equal(logoutRes.status, 201);
+    const logoutCookie = logoutRes.headers.get('set-cookie');
+    assert.ok(logoutCookie);
+    assert.match(logoutCookie, /wc_token=;/);
+  });
+
+  await t.test('14. P3-1: Medya ve Fotoğraf Depolama Servisi (MIME doğrulama, Base64 diske kaydetme ve statik akış)', async () => {
+    // 1. Geçerli bir base64 JPEG fotoğrafı yükleme
+    const sampleJpeg = 'data:image/jpeg;base64,' + Buffer.from('test-image-binary-stream').toString('base64');
+    const uploadRes = await fetch(`${API}/media/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: sampleJpeg }),
+    });
+    assert.equal(uploadRes.status, 201);
+    const uploadData = await uploadRes.json();
+    assert.ok(uploadData.url, 'Medya erişim URLsi dönmeli');
+    assert.match(uploadData.url, /^\/api\/media\/[a-f0-9-]+\.jpg$/);
+
+    // 2. Yüklenen fotoğrafı GET ile okuma
+    const getRes = await fetch(`http://localhost:3000${uploadData.url}`);
+    assert.equal(getRes.status, 200);
+    assert.equal(getRes.headers.get('content-type'), 'image/jpeg');
+    assert.ok(getRes.headers.get('cache-control')?.includes('immutable'));
+    const bodyText = await getRes.text();
+    assert.equal(bodyText, 'test-image-binary-stream');
+
+    // 3. Desteklenmeyen dosya türü (PDF / HTML) engellenmeli
+    const invalidFormat = 'data:application/pdf;base64,' + Buffer.from('fake-pdf').toString('base64');
+    const invalidRes = await fetch(`${API}/media/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: invalidFormat }),
+    });
+    assert.equal(invalidRes.status, 400);
+
+    // 4. Personel müdahale çözümünde base64 fotoğraf verildiğinde otomatik /api/media/... formatına dönüştürülmeli
+    const locsRes = await get('/locations');
+    const loc = locsRes.data[0];
+
+    // Olay oluştur
+    const randTag = Math.random().toString(36).substring(2, 10);
+    const surveyRes = await post('/surveys', {
+      locationId: loc.id,
+      rating: 'bad',
+      issues: ['Musluk arızalı'],
+      clientHash: `${randTag}_media`,
+    });
+    assert.equal(surveyRes.status, 201);
+
+    const incidentsRes = await get(`/incidents?locationId=${loc.id}`, employeeToken);
+    const incident = incidentsRes.data[0];
+    assert.ok(incident);
+
+    // Personel base64 fotoğraf ile olayı çözer
+    const resolveRes = await post(
+      `/incidents/${incident.id}/staff-resolve`,
+      {
+        note: 'Musluk tamir edildi, fotoğraf eklendi.',
+        photoUrl: sampleJpeg,
+        staffName: 'Ahmet Personel',
+      },
+      employeeToken,
+    );
+    assert.equal(resolveRes.status, 201);
+    assert.ok(resolveRes.data.photoUrl);
+    assert.match(resolveRes.data.photoUrl, /^\/api\/media\/[a-f0-9-]+\.jpg$/, 'Veritabanında base64 yerine hafif medya URLsi saklanmalı');
+  });
 });
+
+
 

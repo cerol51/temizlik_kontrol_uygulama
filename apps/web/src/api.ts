@@ -163,6 +163,7 @@ export async function api<T>(
   init: RequestInit = {},
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
+    credentials: 'include',
     ...init,
     headers: {
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
@@ -260,6 +261,12 @@ export async function registerApi(
   return api<AuthResponse>('/auth/register', undefined, {
     method: 'POST',
     body: JSON.stringify({ fullName, username, password, role }),
+  });
+}
+
+export async function logoutApi(): Promise<{ success: boolean; message: string }> {
+  return api<{ success: boolean; message: string }>('/auth/logout', undefined, {
+    method: 'POST',
   });
 }
 

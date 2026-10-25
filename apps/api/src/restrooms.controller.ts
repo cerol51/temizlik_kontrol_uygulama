@@ -14,7 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Request } from 'express';
 import { Repository } from 'typeorm';
-import { AuthenticatedUser, JwtAuthGuard, Public, Roles, RolesGuard, verifyAppToken } from './auth';
+import { AuthenticatedUser, extractTokenFromRequest, JwtAuthGuard, Public, Roles, RolesGuard, verifyAppToken } from './auth';
 import {
   CreateCleaningRecordDto,
   CreateLocationDto,
@@ -99,11 +99,11 @@ export class RestroomsController {
   @Get(['locations', 'restrooms'])
   @Public()
   async listLocations(@Req() req: Request) {
-    const authHeader = req.headers?.authorization;
+    const rawToken = extractTokenFromRequest(req);
     let isAdmin = false;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+    if (rawToken) {
       try {
-        const payload = verifyAppToken(authHeader.substring(7));
+        const payload = verifyAppToken(rawToken);
         if (payload?.role === 'admin') {
           isAdmin = true;
         }

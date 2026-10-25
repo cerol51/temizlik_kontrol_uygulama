@@ -30,6 +30,8 @@ import { SeedService } from './seed.service';
 import { SlaService } from './domain/sla/sla.service';
 import { LocationsService } from './domain/locations/locations.service';
 import { IncidentsService } from './domain/incidents/incidents.service';
+import { MediaService } from './media/media.service';
+import { MediaController } from './media/media.controller';
 
 @Module({
   imports: [
@@ -121,11 +123,13 @@ import { IncidentsService } from './domain/incidents/incidents.service';
     RestroomsController,
     NotificationsController,
     ReportsController,
+    MediaController,
   ],
   providers: [
     SlaService,
     LocationsService,
     IncidentsService,
+    MediaService,
     NotificationsService,
     SeedService,
     JwtStrategy,

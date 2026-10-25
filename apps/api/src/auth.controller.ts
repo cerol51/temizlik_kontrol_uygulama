@@ -7,11 +7,13 @@ import {
   NotFoundException,
   Param,
   Post,
+  Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Response } from 'express';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { AppUser, AuditTrail } from './entities';
@@ -21,12 +23,14 @@ import {
   AuthenticatedUser,
   hashPassword,
   invalidateUserCache,
+  isProduction,
   JwtAuthGuard,
   MIN_PASSWORD_LENGTH,
   Public,
   Roles,
   RolesGuard,
   signAppToken,
+  TOKEN_TTL_SECONDS,
   verifyPassword,
 } from './auth';
 import { CurrentUser } from './user.decorator';
@@ -114,7 +118,10 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('register')
-  async register(@Body() body: RegisterDto) {
+  async register(
+    @Body() body: RegisterDto,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
     const fullName = body.fullName.trim();
     const username = body.username.trim().toLowerCase();
     const password = body.password;
@@ -146,14 +153,28 @@ export class AuthController {
       `Yeni kullanıcı kaydoldu: ${fullName} (@${username}, Rol: ${role})`,
     );
 
-    return { token: signAppToken(newUser), user: toPublicUser(newUser) };
+    const token = signAppToken(newUser);
+    if (res) {
+      res.cookie('wc_token', token, {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/',
+        maxAge: TOKEN_TTL_SECONDS * 1000,
+      });
+    }
+
+    return { token, user: toPublicUser(newUser) };
   }
 
   // 2. Kullanıcı Girişi (Public) — kaba kuvvet denemelerine karşı sınırlı
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
-  async login(@Body() body: LoginDto) {
+  async login(
+    @Body() body: LoginDto,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
     const username = body.username.trim().toLowerCase();
     const user = await this.usersRepo.findOne({ where: { username } });
 
@@ -177,7 +198,56 @@ export class AuthController {
       `Kullanıcı sisteme giriş yaptı: ${user.fullName} (@${user.username})`,
     );
 
-    return { token: signAppToken(user), user: toPublicUser(user) };
+    const token = signAppToken(user);
+    if (res) {
+      res.cookie('wc_token', token, {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/',
+        maxAge: TOKEN_TTL_SECONDS * 1000,
+      });
+    }
+
+    return { token, user: toPublicUser(user) };
+  }
+
+  // 2.5. Oturumu Kapat (Cookie temizleme)
+  @Public()
+  @Post('logout')
+  async logout(@Res({ passthrough: true }) res?: Response) {
+    if (res) {
+      res.clearCookie('wc_token', {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/',
+      });
+    }
+    return { success: true, message: 'Oturum kapatıldı.' };
+  }
+
+  // 2.6. Oturum / Token Yenileme (Refresh)
+  @UseGuards(JwtAuthGuard)
+  @Post('refresh')
+  async refresh(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Res({ passthrough: true }) res?: Response,
+  ) {
+    const user = await this.usersRepo.findOne({ where: { id: currentUser.id } });
+    if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı.');
+
+    const token = signAppToken(user);
+    if (res) {
+      res.cookie('wc_token', token, {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/',
+        maxAge: TOKEN_TTL_SECONDS * 1000,
+      });
+    }
+    return { token, user: toPublicUser(user) };
   }
 
   // 3. Mevcut Kullanıcı Bilgisi

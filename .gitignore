@@ -9,4 +9,7 @@ apps/web/.env.local
 coverage/
 .DS_Store
 *.log
-
+uploads/*
+!uploads/.gitkeep
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep

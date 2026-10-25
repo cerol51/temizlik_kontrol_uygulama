@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppUser, loginApi, registerApi } from '../api';
+import { AppUser, loginApi, logoutApi, registerApi } from '../api';
 
 interface AuthState {
   user: AppUser | null;
@@ -105,6 +105,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
+    void logoutApi().catch(() => {});
     localStorage.removeItem('wc_token');
     localStorage.removeItem('wc_user');
     set({

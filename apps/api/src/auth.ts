@@ -39,7 +39,7 @@ export const Public = () => SetMetadata('isPublic', true);
 /** Erişim tokenı ömrü: bir vardiya (12 saat). */
 export const TOKEN_TTL_SECONDS = 12 * 3600;
 
-const isProduction = () => process.env.NODE_ENV === 'production';
+export const isProduction = () => process.env.NODE_ENV === 'production';
 
 // ---------------------------------------------------------------------------
 // İmza anahtarı
@@ -168,6 +168,24 @@ export function signAppToken(user: { id: string; fullName: string; username: str
   return `${header}.${payload}.${signature}`;
 }
 
+/** İstekten (Header, Query veya Cookie) token ayıklayıcı */
+export function extractTokenFromRequest(request: Request): string | null {
+  const authHeader = request.headers?.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+  if (typeof (request.query as Record<string, unknown>)?.token === 'string') {
+    return (request.query as Record<string, unknown>).token as string;
+  }
+  if (request.headers?.cookie) {
+    const match = request.headers.cookie.match(/(?:^|;\s*)(?:wc_token|wc_auth)=([^;]+)/);
+    if (match) {
+      return decodeURIComponent(match[1]);
+    }
+  }
+  return null;
+}
+
 /** İmza ve süreyi doğrular. Rol bilgisi için veritabanı esas alınır (bkz. JwtAuthGuard). */
 export function verifyAppToken(token: string): AppTokenPayload | null {
   try {
@@ -267,13 +285,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<Request & { user?: AuthenticatedUser }>();
-    const authHeader = request.headers.authorization;
-    let rawToken: string | null = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      rawToken = authHeader.substring(7);
-    } else if (typeof (request.query as Record<string, unknown>)?.token === 'string') {
-      rawToken = (request.query as Record<string, unknown>).token as string;
-    }
+    const rawToken = extractTokenFromRequest(request);
 
     if (rawToken) {
       const payload = verifyAppToken(rawToken);
