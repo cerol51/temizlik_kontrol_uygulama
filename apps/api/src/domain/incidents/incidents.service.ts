@@ -94,13 +94,29 @@ export class IncidentsService implements OnModuleDestroy {
       throw new BadRequestException('Fiziki varlık doğrulaması başarısız: Geçersiz veya süresi dolmuş QR kod tokenı.');
     }
 
+    // Idempotency: Ağ tekrarı veya çifte tıklamada mükerrer kayıt oluşmasını engelle
+    if (body.idempotencyKey) {
+      const existingRecord = await this.cleaningsRepo.findOne({
+        where: { idempotencyKey: body.idempotencyKey },
+      });
+      if (existingRecord) {
+        return {
+          record: existingRecord,
+          duplicatePrevented: true,
+          message: 'İşlem zaten işlendi (Idempotent replay).',
+        };
+      }
+    }
+
     const actualTime = this.slaService.getCurrentTimeStr();
     const sla = this.slaService.evaluateSLA(location.schedule, actualTime, location.toleranceMinutes);
     const staffName = body.staffName?.trim() || user.name || 'Personel';
+    const recordId = randomUUID();
 
     return await this.dataSource.transaction(async (manager) => {
       const record = await manager.save(CleaningRecord, {
-        id: randomUUID(),
+        id: recordId,
+        idempotencyKey: body.idempotencyKey || null,
         locationId: location.id,
         staffUserId: user.id || 'worker-01',
         staffName,
@@ -540,12 +556,21 @@ export class IncidentsService implements OnModuleDestroy {
 
   async checkAutoEscalations(): Promise<number> {
     try {
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-      const openIncidents = await this.incidentsRepo.find({
-        where: { status: 'OPEN', isEscalated: false },
-      });
+      const now = Date.now();
+      const twoMinutesAgo = new Date(now - 2 * 60 * 1000);
+      const sevenMinutesAgo = new Date(now - 7 * 60 * 1000);
+      const fifteenMinutesAgo = new Date(now - 15 * 60 * 1000);
 
       let escalatedCount = 0;
+
+      // -----------------------------------------------------------------------
+      // 1. Kademe Eskalasyon: 2 dakika içinde nöbetçi şef tarafından atanmayan arızalar -> Yedek Şefe devir
+      // -----------------------------------------------------------------------
+      const openIncidents = await this.incidentsRepo.find({
+        where: { status: 'OPEN', isEscalated: false },
+        take: 50,
+      });
+
       for (const inc of openIncidents) {
         if (inc.createdAt < twoMinutesAgo) {
           const nextSupName = inc.backupSupName || inc.currentSupName;
@@ -563,21 +588,102 @@ export class IncidentsService implements OnModuleDestroy {
               id: randomUUID(),
               timestamp: this.slaService.getCurrentTimeStr(),
               locationId: inc.locationId,
-              action: 'ESKALASYON',
+              action: 'ESKALASYON_KADEME_1',
               userRole: 'Sistem Otopilot',
-              summary: `${inc.id} nolu şikayet (${locationName}) 2 dakika yanıtlanmadığı için YEDEK ŞEFE (${inc.backupSupName || 'Yedek'}) devredildi!`,
+              summary: `${inc.id} nolu şikayet (${locationName}) 2 dakika yanıtlanmadığı için YEDEK ŞEFE (${nextSupName}) devredildi!`,
             });
 
             await this.notificationsService.dispatchIncidentAlert(
               inc.id,
               locationName,
               inc.issuesJson,
-              inc.backupSupName || 'Yedek Şef',
+              nextSupName || 'Yedek Şef',
               true,
             );
           }
         }
       }
+
+      // -----------------------------------------------------------------------
+      // 2. Kademe Eskalasyon (A): Personele atanıp 15 dakikadır çözülmeyen arızalar -> Tesis Direktörü Alarmı
+      // -----------------------------------------------------------------------
+      const dispatchedIncidents = await this.incidentsRepo.find({
+        where: { status: 'DISPATCHED', isTier2Escalated: false },
+        take: 50,
+      });
+
+      for (const inc of dispatchedIncidents) {
+        if (inc.createdAt < fifteenMinutesAgo) {
+          const updateResult = await this.incidentsRepo.update(
+            { id: inc.id, status: 'DISPATCHED', isTier2Escalated: false },
+            { isTier2Escalated: true },
+          );
+
+          if (updateResult.affected && updateResult.affected > 0) {
+            escalatedCount++;
+            const loc = inc.locationId ? await this.locationsRepo.findOne({ where: { id: inc.locationId } }) : null;
+            const locationName = loc?.name || 'Mahal';
+
+            await this.auditTrailRepo.save({
+              id: randomUUID(),
+              timestamp: this.slaService.getCurrentTimeStr(),
+              locationId: inc.locationId,
+              action: 'ESKALASYON_KADEME_2',
+              userRole: 'Sistem Otopilot',
+              summary: `🚨 KADEME-2 ESKALASYON: ${inc.id} nolu arıza personele (${inc.assignedStaffName || 'Atanan Personel'}) devredilmesine rağmen 15 dakikadır çözülmedi! Tesis Direktörü bilgilendirildi.`,
+            });
+
+            await this.notificationsService.dispatchIncidentAlert(
+              inc.id,
+              locationName,
+              [`🚨 KADEME-2 SLA AŞIMI: Personel (${inc.assignedStaffName}) 15 dk müdahale etmedi!`, ...inc.issuesJson],
+              'Tesis Direktörü / Genel Yönetim',
+              true,
+            );
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // 2. Kademe Eskalasyon (B): Yedek şefe devredildiği halde 5 dk daha (toplam 7 dk) atanmayan arızalar
+      // -----------------------------------------------------------------------
+      const untouchedEscalated = await this.incidentsRepo.find({
+        where: { status: 'ESCALATED', isTier2Escalated: false },
+        take: 50,
+      });
+
+      for (const inc of untouchedEscalated) {
+        if (inc.createdAt < sevenMinutesAgo) {
+          const updateResult = await this.incidentsRepo.update(
+            { id: inc.id, status: 'ESCALATED', isTier2Escalated: false },
+            { isTier2Escalated: true },
+          );
+
+          if (updateResult.affected && updateResult.affected > 0) {
+            escalatedCount++;
+            const loc = inc.locationId ? await this.locationsRepo.findOne({ where: { id: inc.locationId } }) : null;
+            const locationName = loc?.name || 'Mahal';
+
+            await this.auditTrailRepo.save({
+              id: randomUUID(),
+              timestamp: this.slaService.getCurrentTimeStr(),
+              locationId: inc.locationId,
+              action: 'ESKALASYON_KADEME_2',
+              userRole: 'Sistem Otopilot',
+              summary: `🚨 KADEME-2 ESKALASYON: ${inc.id} nolu arıza yedek şef tarafından da 5 dakikadır atanmadı!`,
+            });
+
+            await this.notificationsService.dispatchIncidentAlert(
+              inc.id,
+              locationName,
+              [`🚨 KADEME-2 UYARISI: Yedek şef de arızaya müdahale etmedi!`, ...inc.issuesJson],
+              'Tesis Direktörü / Genel Yönetim',
+              true,
+            );
+          }
+        }
+      }
+
       return escalatedCount;
     } catch {
       return 0;

@@ -263,16 +263,18 @@ export class LocationsService {
 
   async deleteLocation(id: string, actorName: string): Promise<{ success: boolean; message: string }> {
     const location = await this.requireLocation(id);
-    await this.locationsRepo.delete({ id });
+    location.status = 'ARCHIVED';
+    await this.locationsRepo.save(location);
+    await this.locationsRepo.softDelete({ id });
 
     await this.addAudit(
       null,
-      'MAHAL_SILME',
+      'MAHAL_ARSIVLEME',
       actorName || 'Yönetici',
-      `WC mahali silindi: ${location.name} (${location.code})`,
+      `WC mahali arşivlendi (Soft-delete): ${location.name} (${location.code})`,
     );
 
-    return { success: true, message: 'Mahal silindi.' };
+    return { success: true, message: 'Mahal başarıyla arşivlendi (geçmiş kayıtlar korundu).' };
   }
 
   async addAudit(

@@ -69,6 +69,11 @@ export class CreateCleaningRecordDto {
   @IsString()
   @MaxLength(120)
   locationToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  idempotencyKey?: string;
 }
 
 export class CreateSupervisorAuditDto {

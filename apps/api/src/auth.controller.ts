@@ -194,7 +194,7 @@ export class AuthController {
 
   // 2. Kullanıcı Girişi (Public) — kaba kuvvet denemelerine karşı sınırlı
   @Public()
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: process.env.NODE_ENV === 'production' ? 10 : 100, ttl: 60_000 } })
   @Post('login')
   async login(
     @Body() body: LoginDto,
@@ -422,13 +422,13 @@ export class AuthController {
       }
     }
 
-    await this.usersRepo.delete(id);
+    await this.usersRepo.softDelete(id);
     invalidateUserCache(id);
 
     await this.audit(
       'ADMIN_KULLANICI_SIL',
       `admin (${currentUser.name})`,
-      `Yönetici kullanıcıyı sildi: ${user.fullName} (@${user.username})`,
+      `Yönetici kullanıcıyı arşivledi (soft-delete): ${user.fullName} (@${user.username})`,
     );
 
     return { success: true, message: `"${user.fullName}" kullanıcısı başarıyla silindi.` };

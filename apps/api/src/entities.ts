@@ -1,6 +1,7 @@
 import {
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   Index,
   JoinColumn,
@@ -26,6 +27,9 @@ export class Project {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt?: Date | null;
 }
 
 @Entity('locations')
@@ -76,6 +80,9 @@ export class Location {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt?: Date | null;
 }
 
 // Geriye dönük uyumluluk için alias
@@ -122,9 +129,13 @@ export class ChecklistItem {
 @Entity('cleaning_records')
 @Index('cleaning_records_created_idx', ['createdAt'])
 @Index('cleaning_records_location_created_idx', ['locationId', 'createdAt'])
+@Index('cleaning_records_idempotency_idx', ['idempotencyKey'])
 export class CleaningRecord {
   @PrimaryColumn('uuid')
   id: string;
+
+  @Column({ name: 'idempotency_key', type: 'varchar', length: 64, nullable: true })
+  idempotencyKey?: string | null;
 
   @Column({ name: 'location_id', type: 'uuid' })
   locationId: string;
@@ -258,6 +269,9 @@ export class Incident {
   @Column({ name: 'is_escalated', type: 'boolean', default: false })
   isEscalated: boolean;
 
+  @Column({ name: 'is_tier2_escalated', type: 'boolean', default: false })
+  isTier2Escalated: boolean;
+
   @Column({ length: 20 })
   time: string;
 
@@ -275,6 +289,9 @@ export class Incident {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt?: Date | null;
 }
 
 @Entity('notification_dispatch')
@@ -405,5 +422,8 @@ export class AppUser {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt?: Date | null;
 }
 

@@ -457,6 +457,116 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.ok(resolveRes.data.photoUrl);
     assert.match(resolveRes.data.photoUrl, /^\/api\/media\/[a-f0-9-]+\.jpg$/, 'Veritabanında base64 yerine hafif medya URLsi saklanmalı');
   });
+
+  await t.test('15. P0-1: Soft-Delete Koruması (Mahal ve Kullanıcı Arşivleme, Geçmiş Kayıtların Korunması)', async () => {
+    // 1. Yeni bir test mahali oluştur
+    const randCode = 'SOFT_' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    const createLocRes = await post(
+      '/locations',
+      {
+        code: randCode,
+        name: `Test Mahal ${randCode}`,
+        toleranceMinutes: 15,
+        schedule: ['08:00', '12:00'],
+      },
+      adminToken,
+    );
+    assert.equal(createLocRes.status, 201);
+    const locId = createLocRes.data.id;
+
+    // 2. Bu mahale bir temizlik kaydı ekle
+    const cleanRes = await post(
+      `/locations/${locId}/cleanings`,
+      {
+        tasksConfirmed: true,
+        staffName: 'Ali Temizlikçi',
+        note: 'Soft delete testi öncesi kayıt',
+      },
+      employeeToken,
+    );
+    assert.equal(cleanRes.status, 201);
+
+    // 3. Mahali sil (DELETE /locations/:id)
+    const delRes = await del(`/locations/${locId}`, adminToken);
+    assert.equal(delRes.status, 200);
+    assert.match(delRes.data.message, /arşivlendi/i);
+
+    // 4. Mahal aktif mahal listesinde (/locations) GÖRÜNMEMELİ (TypeORM Soft-Delete)
+    const activeLocs = await get('/locations', supervisorToken);
+    const found = activeLocs.data.find((l) => l.id === locId);
+    assert.equal(found, undefined, 'Soft-delete edilen mahal aktif listede gelmemeli');
+
+    // 5. Yeni bir kullanıcı aç ve sil (DELETE /auth/users/:id)
+    const testUsername = `user_${Math.random().toString(36).substring(2, 7)}`;
+    const createUserRes = await post(
+      '/auth/users',
+      {
+        username: testUsername,
+        password: 'password123',
+        fullName: 'Geçici Kullanıcı',
+        role: 'employee',
+      },
+      adminToken,
+    );
+    assert.equal(createUserRes.status, 201);
+    const userId = createUserRes.data.id;
+
+    const delUserRes = await del(`/auth/users/${userId}`, adminToken);
+    assert.equal(delUserRes.status, 200);
+    assert.equal(delUserRes.data.success, true);
+
+    const activeUsers = await get('/auth/users', adminToken);
+    const foundUser = activeUsers.data.find((u) => u.id === userId);
+    assert.equal(foundUser, undefined, 'Soft-delete edilen kullanıcı aktif listede gelmemeli');
+  });
+
+  await t.test('16. P0-2: Çok Kademeli (Multi-tier) SLA Eskalasyon Motoru Kontrolü', async () => {
+    // Eskalasyon kontrol fonksiyonunun tetiklenmesi ve başarılı sonuç dönmesi
+    const triggerRes = await post('/incidents/auto-escalate', {}, supervisorToken);
+    assert.equal(triggerRes.status, 201);
+    assert.equal(triggerRes.data.success, true);
+    assert.equal(typeof triggerRes.data.escalatedCount, 'number');
+
+    // Yetkisiz personelin eskalasyon motorunu tetikleyememesi (403 Forbidden)
+    const unauthorizedTrigger = await post('/incidents/auto-escalate', {}, employeeToken);
+    assert.equal(unauthorizedTrigger.status, 403);
+  });
+
+  await t.test('17. P1-1: Idempotency Key ile Mükerrer Temizlik / Ağ Tekrarı Engelleme', async () => {
+    const locsRes = await get('/locations');
+    const loc = locsRes.data[0];
+    const idempotencyKey = `idem_${Math.random().toString(36).substring(2, 12)}`;
+
+    // 1. İlk gönderim
+    const firstCall = await post(
+      `/locations/${loc.id}/cleanings`,
+      {
+        tasksConfirmed: true,
+        staffName: 'Kemal Usta',
+        idempotencyKey,
+        note: 'İlk işlem denemesi',
+      },
+      employeeToken,
+    );
+    assert.equal(firstCall.status, 201);
+    assert.equal(firstCall.data.duplicatePrevented, undefined);
+    assert.ok(firstCall.data.record.id);
+
+    // 2. Ağ gecikmesi veya çift tıklama ile gelen birebir aynı idempotencyKey çağrısı
+    const retryCall = await post(
+      `/locations/${loc.id}/cleanings`,
+      {
+        tasksConfirmed: true,
+        staffName: 'Kemal Usta',
+        idempotencyKey,
+        note: 'Mükerrer ağ isteği',
+      },
+      employeeToken,
+    );
+    assert.equal(retryCall.status, 201);
+    assert.equal(retryCall.data.duplicatePrevented, true);
+    assert.equal(retryCall.data.record.id, firstCall.data.record.id, 'Aynı kayıt döndürülmeli, yeni kayıt açılmamalı');
+  });
 });
 
 
