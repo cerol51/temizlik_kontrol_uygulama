@@ -1,14 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
+import type { IScannerControls } from '@zxing/browser';
 import { Navbar } from './components/Navbar';
 import { PhotoPreviewModal } from './components/Modals/PhotoPreviewModal';
 import { AuthModal } from './components/Modals/AuthModal';
 
-// Modular Feature Sections
+// Modular Feature Sections (Code-Split for sub-second kiosk & guest loading)
 import { GuestSection } from './features/guest/GuestSection';
-import { StaffSection } from './features/staff/StaffSection';
-import { SupervisorSection } from './features/supervisor/SupervisorSection';
-import { AdminSection } from './features/admin/AdminSection';
+const StaffSection = React.lazy(() =>
+  import('./features/staff/StaffSection').then((m) => ({ default: m.StaffSection })),
+);
+const SupervisorSection = React.lazy(() =>
+  import('./features/supervisor/SupervisorSection').then((m) => ({ default: m.SupervisorSection })),
+);
+const AdminSection = React.lazy(() =>
+  import('./features/admin/AdminSection').then((m) => ({ default: m.AdminSection })),
+);
 
 // Centralized Zustand Stores & Hooks
 import { useAuthStore } from './stores/authStore';
@@ -88,39 +94,56 @@ export default function App() {
     });
   }, [fetchLocations, setSelectedId]);
 
-  // 4. Video QR Camera Reader
+  // 4. Video QR Camera Reader (Kamera açıldığında ZXing motorunu dinamik olarak asenkron yükle)
   useEffect(() => {
     if (!scannerOpen || !videoRef.current) return;
-    const reader = new BrowserMultiFormatReader();
     let active = true;
 
-    reader
-      .decodeFromVideoDevice(undefined, videoRef.current, (result) => {
-        if (!active || !result) return;
-        const text = result.getText();
-        let targetId = '';
+    void import('@zxing/browser')
+      .then(({ BrowserMultiFormatReader }) => {
+        if (!active || !videoRef.current) return;
+        const reader = new BrowserMultiFormatReader();
 
-        if (text.includes('/q/')) {
-          const tokenVal = text.split('/q/')[1]?.split('?')[0];
-          const found = locations.find((l) => l.token === tokenVal);
-          if (found) targetId = found.id;
-        } else if (text.includes('wc=')) {
-          const id = new URL(text, window.location.origin).searchParams.get('wc');
-          if (id) targetId = id;
-        }
+        reader
+          .decodeFromVideoDevice(undefined, videoRef.current, (result) => {
+            if (!active || !result) return;
+            const text = result.getText();
+            let targetId = '';
 
-        if (targetId) {
-          setSelectedId(targetId);
-          closeScanner();
-          showNotice('✓ Mahal QR kodu başarıyla algılandı.');
-        }
-      })
-      .then((controls) => {
-        scannerRef.current = controls;
+            if (text.includes('/q/')) {
+              const tokenVal = text.split('/q/')[1]?.split('?')[0];
+              const found = locations.find((l) => l.token === tokenVal);
+              if (found) targetId = found.id;
+            } else if (text.includes('wc=')) {
+              const id = new URL(text, window.location.origin).searchParams.get('wc');
+              if (id) targetId = id;
+            }
+
+            if (targetId) {
+              setSelectedId(targetId);
+              closeScanner();
+              showNotice('✓ Mahal QR kodu başarıyla algılandı.');
+            }
+          })
+          .then((controls) => {
+            if (!active) {
+              controls.stop();
+            } else {
+              scannerRef.current = controls;
+            }
+          })
+          .catch((err) => {
+            if (active) {
+              showNotice('Kamera açılamadı: ' + String(err), true);
+              closeScanner();
+            }
+          });
       })
       .catch((err) => {
-        showNotice('Kamera açılamadı: ' + String(err), true);
-        closeScanner();
+        if (active) {
+          showNotice('Barkod kütüphanesi yüklenemedi: ' + String(err), true);
+          closeScanner();
+        }
       });
 
     return () => {
@@ -230,25 +253,34 @@ export default function App() {
           />
         )}
 
-        {/* Personel Saha Görev Ekranı */}
-        {activeTab === 'employee' && (
-          <StaffSection
-            curLocation={curLocation}
-            currentTime={currentTime}
-          />
-        )}
+        <React.Suspense
+          fallback={
+            <div className="w-full flex-1 flex flex-col items-center justify-center py-24 gap-3 text-slate-400">
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs font-medium">Modül yükleniyor...</span>
+            </div>
+          }
+        >
+          {/* Personel Saha Görev Ekranı */}
+          {activeTab === 'employee' && (
+            <StaffSection
+              curLocation={curLocation}
+              currentTime={currentTime}
+            />
+          )}
 
-        {/* Şef Denetim ve Operasyon Portalı */}
-        {activeTab === 'supervisor' && (
-          <SupervisorSection
-            curLocation={curLocation}
-          />
-        )}
+          {/* Şef Denetim ve Operasyon Portalı */}
+          {activeTab === 'supervisor' && (
+            <SupervisorSection
+              curLocation={curLocation}
+            />
+          )}
 
-        {/* Sistem Yöneticisi (Admin) Merkezi */}
-        {activeTab === 'admin' && (
-          <AdminSection />
-        )}
+          {/* Sistem Yöneticisi (Admin) Merkezi */}
+          {activeTab === 'admin' && (
+            <AdminSection />
+          )}
+        </React.Suspense>
       </main>
 
       {/* 5. Genel Modallar */}

@@ -2,18 +2,21 @@
   "expo": {
     "name": "mobile",
     "slug": "mobile",
+    "scheme": "wctakip",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.wctakip.mobile",
       "infoPlist": {
         "NSCameraUsageDescription": "Mahal kapısındaki QR kodları okutmak ve temizlik müdahale kanıtı çekmek için kamera erişimi gereklidir.",
         "NSPhotoLibraryUsageDescription": "Fotoğraf kanıtı yüklemek için galeri erişimi gereklidir."
       }
     },
     "android": {
+      "package": "com.wctakip.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

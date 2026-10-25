@@ -555,6 +555,22 @@ export class IncidentsService implements OnModuleDestroy {
   }
 
   async checkAutoEscalations(): Promise<number> {
+    const isPg = this.dataSource.options.type === 'postgres';
+    let lockAcquired = false;
+
+    // Çoklu pod / dağıtık ortamda yarış durumunu (race condition) önlemek için PostgreSQL advisory lock
+    if (isPg) {
+      try {
+        const lockRes = await this.dataSource.query('SELECT pg_try_advisory_lock(42001) as locked');
+        if (lockRes && lockRes[0] && (lockRes[0].locked === false || lockRes[0].locked === 'f')) {
+          return 0; // Başka bir pod şu anda eskalasyon kontrolünü yürütüyor
+        }
+        lockAcquired = true;
+      } catch {
+        // Test/mock veya kilit desteklenmeyen ortamlarda devam et
+      }
+    }
+
     try {
       const now = Date.now();
       const twoMinutesAgo = new Date(now - 2 * 60 * 1000);
@@ -687,6 +703,14 @@ export class IncidentsService implements OnModuleDestroy {
       return escalatedCount;
     } catch {
       return 0;
+    } finally {
+      if (isPg && lockAcquired) {
+        try {
+          await this.dataSource.query('SELECT pg_advisory_unlock(42001)');
+        } catch {
+          // ignore
+        }
+      }
     }
   }
 }

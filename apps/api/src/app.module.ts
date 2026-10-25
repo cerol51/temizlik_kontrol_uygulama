@@ -72,6 +72,13 @@ import { MediaController } from './media/media.controller';
             type: 'postgres',
             url: pgUrl,
             synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true' || !isProd,
+            extra: {
+              max: Number(process.env.DB_POOL_MAX || 20),
+              min: Number(process.env.DB_POOL_MIN || 4),
+              idleTimeoutMillis: 30000,
+              connectionTimeoutMillis: 3000,
+              statement_timeout: 10000,
+            },
           } as DataSourceOptions);
           return await ds.initialize();
         } else {

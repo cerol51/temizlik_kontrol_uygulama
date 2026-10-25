@@ -1,5 +1,6 @@
 # ------------------------------------------------------------------------------
 # Production Multi-Stage Dockerfile for NestJS API
+# Hardened for CIS Benchmarks & Pod Security Standards (Non-root, Tini Init)
 # ------------------------------------------------------------------------------
 
 # 1. Aşama: Derleme (Build Stage)
@@ -19,6 +20,9 @@ RUN npm run build --prefix apps/api
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# PID 1 zombi süreç temizliği ve sinyal iletimi (SIGTERM/SIGINT) için tini
+RUN apk add --no-cache tini
+
 ENV NODE_ENV=production
 ENV API_PORT=3000
 
@@ -30,9 +34,14 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY apps/api/uploads ./apps/api/uploads
 
-# Çalışma dizinini apps/api yap
+# Güvenlik: Dosya sahipliklerini sınırla ve unprivileged 'node' kullanıcısına geç
+RUN chown -R node:node /app
+
 WORKDIR /app/apps/api
+USER node
 
 EXPOSE 3000
 
+# Tini ile başlatarak düzgün kapanma (graceful shutdown) sağla
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/main.js"]

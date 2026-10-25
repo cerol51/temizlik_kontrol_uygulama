@@ -228,6 +228,8 @@ export type Inspection = SupervisorAudit;
 @Entity('incidents')
 @Index('incidents_location_idx', ['locationId'])
 @Index('incidents_status_idx', ['status'])
+@Index('incidents_created_idx', ['createdAt'])
+@Index('incidents_status_created_idx', ['status', 'createdAt'])
 export class Incident {
   @PrimaryColumn({ length: 60 })
   id: string;
