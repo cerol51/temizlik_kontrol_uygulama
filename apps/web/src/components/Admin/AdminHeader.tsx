@@ -7,7 +7,7 @@ interface AdminHeaderProps {
   setAdminSubTab: (tab: 'overview' | 'locations' | 'users' | 'matrix' | 'audit') => void;
   onOpenCreateLocation: () => void;
   onOpenCreateUser: () => void;
-  onDownloadCsv?: () => void;
+  onDownloadCsv?: (type?: 'audit' | 'cleanings' | 'incidents') => void;
 }
 
 export const AdminHeader: React.FC<AdminHeaderProps> = ({
@@ -18,6 +18,8 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
   onOpenCreateUser,
   onDownloadCsv,
 }) => {
+  const [csvMenuOpen, setCsvMenuOpen] = React.useState(false);
+
   return (
     <>
       {/* Admin Karşılama Başlığı */}
@@ -56,13 +58,49 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
           >
             <i className="fa-solid fa-user-plus"></i> Yeni Kullanıcı
           </button>
-          <button
-            type="button"
-            onClick={onDownloadCsv}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow transition"
-          >
-            <i className="fa-solid fa-file-csv"></i> CSV İndir
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setCsvMenuOpen(!csvMenuOpen)}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow transition"
+            >
+              <i className="fa-solid fa-file-csv"></i> CSV Raporlar <i className="fa-solid fa-chevron-down text-[10px]"></i>
+            </button>
+            {csvMenuOpen && (
+              <div className="absolute right-0 mt-1 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCsvMenuOpen(false);
+                    onDownloadCsv?.('audit');
+                  }}
+                  className="w-full text-left px-3 py-2 text-slate-200 hover:bg-slate-800 flex items-center gap-2 transition"
+                >
+                  <i className="fa-solid fa-list-check text-emerald-400"></i> Denetim İzi (Audit)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCsvMenuOpen(false);
+                    onDownloadCsv?.('cleanings');
+                  }}
+                  className="w-full text-left px-3 py-2 text-slate-200 hover:bg-slate-800 flex items-center gap-2 transition"
+                >
+                  <i className="fa-solid fa-broom text-blue-400"></i> Temizlik Kayıtları
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCsvMenuOpen(false);
+                    onDownloadCsv?.('incidents');
+                  }}
+                  className="w-full text-left px-3 py-2 text-slate-200 hover:bg-slate-800 flex items-center gap-2 transition"
+                >
+                  <i className="fa-solid fa-triangle-exclamation text-amber-400"></i> Arıza &amp; Şikayetler
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

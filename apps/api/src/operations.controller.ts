@@ -210,33 +210,67 @@ export class ReportsController {
     };
   }
 
-  // CSV Rapor İndirme Endpoint'i
+  // CSV Rapor İndirme Endpoint'i (Denetim İzi, Temizlik Kayıtları, Arıza / Şikayet Listesi)
   @Get('export-csv')
-  async exportCsv(@Res() res: Response) {
-    const logs = await this.auditTrail.find({
-      order: { createdAt: 'DESC' },
-      take: 200,
-    });
+  async exportCsv(
+    @Query('type') type: string = 'audit',
+    @Query('limit') limitStr?: string,
+    @Res() res?: Response,
+  ) {
+    if (!res) throw new BadRequestException('Response context missing.');
+    const limit = Math.min(Math.max(parseInt(limitStr || '500', 10) || 500, 1), 2000);
     const locations = await this.locations.find();
-    const locMap = new Map(locations.map((l) => [l.id, l.name]));
+    const locMap = new Map(locations.map((l) => [l.id, l]));
 
-    const sanitizeCsv = (val: string) => {
-      let clean = (val || '').replace(/"/g, '""');
+    const sanitizeCsv = (val: any) => {
+      let clean = String(val ?? '').replace(/"/g, '""');
       if (/^[=+\-@]/.test(clean)) clean = `'${clean}`;
       return `"${clean}"`;
     };
 
-    let csv = '\uFEFFZaman,Mahal,Eylem,Kullanici,Ozet\n';
-    logs.forEach((log) => {
-      const locName = log.locationId ? locMap.get(log.locationId) || log.locationId : 'Genel';
-      csv += `${sanitizeCsv(log.timestamp)},${sanitizeCsv(locName)},${sanitizeCsv(log.action)},${sanitizeCsv(log.userRole)},${sanitizeCsv(log.summary)}\n`;
-    });
+    const dateStr = new Date().toISOString().substring(0, 10);
+    let csv = '';
+    let filename = '';
+
+    if (type === 'cleanings') {
+      filename = `WC_Temizlik_Kayitlari_${dateStr}.csv`;
+      csv = '\uFEFFKayıt ID,Mahal Kodu,Mahal Adı,Personel,Planlanan Slot,Fiili Zaman,SLA Durumu,Fark (dk),Fiziki QR,Not,Kayıt Tarihi\n';
+      const cleanings = await this.cleanings.find({
+        order: { createdAt: 'DESC' },
+        take: limit,
+      });
+      cleanings.forEach((c) => {
+        const loc = locMap.get(c.locationId);
+        csv += `${sanitizeCsv(c.id)},${sanitizeCsv(loc?.code || '')},${sanitizeCsv(loc?.name || c.locationId)},${sanitizeCsv(c.staffName)},${sanitizeCsv(c.plannedSlot)},${sanitizeCsv(c.actualTime)},${sanitizeCsv(c.slaStatus)},${c.diffMinutes},${c.isVerifiedQr ? 'Evet' : 'Hayır'},${sanitizeCsv(c.note || '')},${sanitizeCsv(c.createdAt ? new Date(c.createdAt).toLocaleString('tr-TR') : '')}\n`;
+      });
+    } else if (type === 'incidents') {
+      filename = `WC_Ariza_Sikayet_Raporu_${dateStr}.csv`;
+      csv = '\uFEFFBilet No,Mahal,Durum,Sorunlar,Nöbetçi Şef,Atanan Personel,Kademe-1 Eskalasyon,Kademe-2 Eskalasyon,Çözüm Notu,Kayıt Tarihi\n';
+      const incidents = await this.incidents.find({
+        order: { createdAt: 'DESC' },
+        take: limit,
+      });
+      incidents.forEach((inc) => {
+        const loc = inc.locationId ? locMap.get(inc.locationId) : null;
+        const issues = Array.isArray(inc.issuesJson) ? inc.issuesJson.join('; ') : '';
+        csv += `${sanitizeCsv(inc.id)},${sanitizeCsv(loc?.name || inc.locationId || 'Genel')},${sanitizeCsv(inc.status)},${sanitizeCsv(issues)},${sanitizeCsv(inc.currentSupName || '')},${sanitizeCsv(inc.assignedStaffName || '')},${inc.isEscalated ? 'Evet' : 'Hayır'},${inc.isTier2Escalated ? 'Evet' : 'Hayır'},${sanitizeCsv(inc.resolutionNote || '')},${sanitizeCsv(inc.createdAt ? new Date(inc.createdAt).toLocaleString('tr-TR') : '')}\n`;
+      });
+    } else {
+      filename = `WC_Denetim_Izleme_Raporu_${dateStr}.csv`;
+      csv = '\uFEFFZaman,Mahal,Eylem,Kullanici,Ozet\n';
+      const logs = await this.auditTrail.find({
+        order: { createdAt: 'DESC' },
+        take: limit,
+      });
+      logs.forEach((log) => {
+        const loc = log.locationId ? locMap.get(log.locationId) : null;
+        const locName = loc ? loc.name : log.locationId || 'Genel';
+        csv += `${sanitizeCsv(log.timestamp)},${sanitizeCsv(locName)},${sanitizeCsv(log.action)},${sanitizeCsv(log.userRole)},${sanitizeCsv(log.summary)}\n`;
+      });
+    }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="WC_Denetim_Izleme_Raporu_${new Date().toISOString().substring(0, 10)}.csv"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
   }
 

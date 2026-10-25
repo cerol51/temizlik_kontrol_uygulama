@@ -4,7 +4,7 @@ import {
   AppUser,
   createUserApi,
   deleteUserApi,
-  downloadAuditCsvApi,
+  downloadCsvApi,
   fetchUsersApi,
   Location,
 } from '../../api';
@@ -70,12 +70,17 @@ export const AdminSection: React.FC = () => {
     }
   }, [token]);
 
-  const handleDownloadCsv = async () => {
+  const handleDownloadCsv = async (type: 'audit' | 'cleanings' | 'incidents' = 'audit') => {
     if (!token) return;
     try {
       setBusy(true);
-      await downloadAuditCsvApi(token);
-      showNotice('✓ Denetim izi CSV raporu başarıyla indirildi.');
+      await downloadCsvApi(type, token);
+      const labels = {
+        audit: 'Denetim İzi',
+        cleanings: 'Temizlik Kayıtları',
+        incidents: 'Arıza ve Müdahale',
+      };
+      showNotice(`✓ ${labels[type]} CSV raporu başarıyla indirildi.`);
     } catch (err: any) {
       showNotice(err.message || 'Rapor indirilemedi.', true);
     } finally {

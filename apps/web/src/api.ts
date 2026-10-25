@@ -363,8 +363,11 @@ export async function fetchActiveChecklistApi(): Promise<ActiveChecklist> {
   return api<ActiveChecklist>('/checklists/active');
 }
 
-export async function downloadAuditCsvApi(token?: string): Promise<void> {
-  const response = await fetch('/api/reports/export-csv', {
+export async function downloadCsvApi(
+  type: 'audit' | 'cleanings' | 'incidents' = 'audit',
+  token?: string,
+): Promise<void> {
+  const response = await fetch(`/api/reports/export-csv?type=${type}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
@@ -376,11 +379,19 @@ export async function downloadAuditCsvApi(token?: string): Promise<void> {
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `WC_Denetim_Izleme_Raporu_${new Date().toISOString().substring(0, 10)}.csv`;
+  const dateStr = new Date().toISOString().substring(0, 10);
+  const defaultNames: Record<string, string> = {
+    cleanings: `WC_Temizlik_Kayitlari_${dateStr}.csv`,
+    incidents: `WC_Ariza_Sikayet_Raporu_${dateStr}.csv`,
+    audit: `WC_Denetim_Izleme_Raporu_${dateStr}.csv`,
+  };
+  a.download = defaultNames[type] || `WC_Rapor_${dateStr}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
 }
+
+export const downloadAuditCsvApi = (token?: string) => downloadCsvApi('audit', token);
 
 

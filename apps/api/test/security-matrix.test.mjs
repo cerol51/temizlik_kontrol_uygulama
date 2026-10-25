@@ -567,6 +567,39 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.equal(retryCall.data.duplicatePrevented, true);
     assert.equal(retryCall.data.record.id, firstCall.data.record.id, 'Aynı kayıt döndürülmeli, yeni kayıt açılmamalı');
   });
+
+  await t.test('18. P2-2: Çok Türlü CSV Rapor Dışa Aktarımı (Temizlik, Arıza/Şikayet, Denetim İzi)', async () => {
+    // 1. Standart denetim izi CSV dışa aktarımı
+    const resAudit = await fetch(`${API}/reports/export-csv?type=audit`, {
+      headers: { Authorization: `Bearer ${supervisorToken}` },
+    });
+    assert.equal(resAudit.status, 200);
+    assert.match(resAudit.headers.get('content-type'), /text\/csv/);
+    const auditText = await resAudit.text();
+    assert.match(auditText, /Zaman,Mahal,Eylem,Kullanici,Ozet/);
+
+    // 2. Temizlik kayıtları CSV dışa aktarımı
+    const resCleanings = await fetch(`${API}/reports/export-csv?type=cleanings`, {
+      headers: { Authorization: `Bearer ${supervisorToken}` },
+    });
+    assert.equal(resCleanings.status, 200);
+    const cleaningsText = await resCleanings.text();
+    assert.match(cleaningsText, /Kayıt ID,Mahal Kodu,Mahal Adı,Personel/);
+
+    // 3. Arıza / Şikayet biletleri CSV dışa aktarımı
+    const resIncidents = await fetch(`${API}/reports/export-csv?type=incidents`, {
+      headers: { Authorization: `Bearer ${supervisorToken}` },
+    });
+    assert.equal(resIncidents.status, 200);
+    const incidentsText = await resIncidents.text();
+    assert.match(incidentsText, /Bilet No,Mahal,Durum,Sorunlar/);
+
+    // 4. Yetkisiz personel erişimi engellenmeli (403 Forbidden)
+    const resForbidden = await fetch(`${API}/reports/export-csv`, {
+      headers: { Authorization: `Bearer ${employeeToken}` },
+    });
+    assert.equal(resForbidden.status, 403);
+  });
 });
 
 
