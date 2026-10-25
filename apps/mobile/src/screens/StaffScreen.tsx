@@ -19,10 +19,16 @@ import {
   fetchLocationsApi,
   fetchSupervisorStatusApi,
   formatTime,
+  isNetworkError,
   resolveIncidentApi,
   resolveQrTokenApi,
   showAlert,
 } from '../api';
+import {
+  enqueueAction,
+  getPendingActionsCount,
+  syncPendingQueue,
+} from '../offlineQueue';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
 import { QrScannerModal } from '../components/QrScannerModal';
 
@@ -46,6 +52,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(false);
   const [taskTab, setTaskTab] = useState<'ALL' | 'MINE' | 'LOCATION'>('ALL');
+  const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
 
   // Routine cleaning modal & QR presence state
   const [cleaningModalOpen, setCleaningModalOpen] = useState(false);
@@ -105,6 +112,13 @@ export function StaffScreen({ user, token, onLogout }: Props) {
 
   async function refreshLocationData(locId?: string) {
     try {
+      // Çevrimdışı sırada bekleyen işlem varsa ağ gelmişken aktar
+      const syncResult = await syncPendingQueue(token);
+      if (syncResult.synced > 0) {
+        setNotice({ text: `✓ ${syncResult.synced} çevrimdışı işlem merkeze senkronize edildi.` });
+      }
+      setPendingOfflineCount(syncResult.remaining);
+
       const activeLocId = locId || selectedLocation?.id;
       const [status, allIncs] = await Promise.all([
         activeLocId ? fetchSupervisorStatusApi(activeLocId, token).catch(() => null) : null,
@@ -244,6 +258,31 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         await refreshLocationData(selectedLocation.id);
       }
     } catch (err: any) {
+      if (isNetworkError(err)) {
+        const idempotencyKey = `mob_offline_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        await enqueueAction({
+          type: 'CLEANING',
+          idempotencyKey,
+          payload: {
+            locationId: selectedLocation.id,
+            locationToken: verifiedLocationToken || selectedLocation.token,
+            staffName: user.fullName || user.username,
+            items: CLEANING_CHECKLIST_ITEMS,
+            note: cleaningNote.trim() || undefined,
+            idempotencyKey,
+          },
+        });
+        const count = await getPendingActionsCount();
+        setPendingOfflineCount(count);
+        const offlineMsg = `📶 Çevrimdışı Kaydedildi: Ağ bağlantısı olmadığı için temizlik hafızaya alındı (${selectedLocation.name}). İnternet gelince otomatik senkronize edilecektir.`;
+        setNotice({ text: offlineMsg });
+        showAlert('Çevrimdışı Kayıt', offlineMsg);
+        setCleaningModalOpen(false);
+        setCleaningNote('');
+        setVerifiedLocationToken(null);
+        setVerifiedLocationName(null);
+        return;
+      }
       const errMsg = err?.message || 'Temizlik kaydedilemedi.';
       setNotice({ text: errMsg, bad: true });
       showAlert('Hata', errMsg);
@@ -273,6 +312,28 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         await refreshLocationData(selectedLocation.id);
       }
     } catch (err: any) {
+      if (isNetworkError(err)) {
+        const idempotencyKey = `mob_offline_res_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        await enqueueAction({
+          type: 'RESOLVE_INCIDENT',
+          idempotencyKey,
+          payload: {
+            incidentId: activeIncidentToResolve.id,
+            resolutionNote: resolutionNote || 'Görev saha personeli tarafından giderildi ve kapatıldı.',
+            photoUrl: photoBase64 || undefined,
+          },
+        });
+        const count = await getPendingActionsCount();
+        setPendingOfflineCount(count);
+        const offlineMsg =
+          '📶 Çevrimdışı Kaydedildi: Müdahale internetsiz hafızaya alındı. İnternet bağlantısı sağlandığında şefe iletilecektir.';
+        setNotice({ text: offlineMsg });
+        showAlert('Çevrimdışı Kayıt', offlineMsg);
+        setActiveIncidentToResolve(null);
+        setResolutionNote('');
+        setPhotoBase64(null);
+        return;
+      }
       const errMsg = err?.message || 'Görev kapatılamadı.';
       setNotice({ text: errMsg, bad: true });
       showAlert('Hata', errMsg);
@@ -326,6 +387,33 @@ export function StaffScreen({ user, token, onLogout }: Props) {
           <Text style={styles.noticeText}>{notice.text}</Text>
           <TouchableOpacity onPress={() => setNotice(null)}>
             <Text style={styles.noticeClose}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Offline sync banner */}
+      {pendingOfflineCount > 0 && (
+        <View style={styles.offlineSyncBox}>
+          <Text style={styles.offlineSyncText}>
+            📶 {pendingOfflineCount} işlem çevrimdışı sırada bekliyor
+          </Text>
+          <TouchableOpacity
+            style={styles.offlineSyncBtn}
+            onPress={async () => {
+              const res = await syncPendingQueue(token);
+              if (res.synced > 0) {
+                setNotice({ text: `✓ ${res.synced} işlem merkeze aktarıldı.` });
+                if (selectedLocation) void refreshLocationData(selectedLocation.id);
+              } else if (res.failed > 0) {
+                showAlert(
+                  'Bağlantı Yok',
+                  'Sunucuya erişilemedi. İnternet bağlantısı sağlandığında tekrar deneyiniz.',
+                );
+              }
+              setPendingOfflineCount(res.remaining);
+            }}
+          >
+            <Text style={styles.offlineSyncBtnText}>Şimdi Aktar</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1079,6 +1167,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     padding: 4,
+  },
+  offlineSyncBox: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#78350f',
+    borderColor: '#f59e0b',
+    borderWidth: 1,
+  },
+  offlineSyncText: {
+    color: '#fef3c7',
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  offlineSyncBtn: {
+    backgroundColor: '#d97706',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  offlineSyncBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
   },
   modalOverlay: {
     flex: 1,

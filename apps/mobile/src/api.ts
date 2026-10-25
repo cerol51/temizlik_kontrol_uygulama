@@ -168,6 +168,19 @@ function buildFullUrl(base: string, endpoint: string): string {
   return `${cleanBase}${cleanEndpoint}`;
 }
 
+export function isNetworkError(err: any): boolean {
+  if (!err) return false;
+  return (
+    err.name === 'TypeError' ||
+    err.name === 'AbortError' ||
+    err.message?.includes('fetch') ||
+    err.message?.includes('Network') ||
+    err.message?.includes('Failed to fetch') ||
+    err.message?.includes('aborted') ||
+    err.message?.includes('bağlanılamadı')
+  );
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   token?: string,
@@ -214,16 +227,8 @@ export async function apiRequest<T>(
   try {
     return await executeFetch(primaryUrl);
   } catch (err: any) {
-    const isNetworkError =
-      err.name === 'TypeError' ||
-      err.name === 'AbortError' ||
-      err.message?.includes('fetch') ||
-      err.message?.includes('Network') ||
-      err.message?.includes('Failed to fetch') ||
-      err.message?.includes('aborted');
-
     // Only attempt failover if it is truly a connection/network issue, not a 400/401/403/404/500 API error
-    if (!isNetworkError) {
+    if (!isNetworkError(err)) {
       throw err;
     }
 
