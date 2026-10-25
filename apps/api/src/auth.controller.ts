@@ -7,13 +7,14 @@ import {
   NotFoundException,
   Param,
   Post,
+  Req,
   Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { AppUser, AuditTrail } from './entities';
@@ -21,6 +22,7 @@ import {
   APP_ROLES,
   AppRole,
   AuthenticatedUser,
+  extractTokenFromRequest,
   hashPassword,
   invalidateUserCache,
   isProduction,
@@ -30,7 +32,11 @@ import {
   Roles,
   RolesGuard,
   signAppToken,
+  signTokenPair,
+  ACCESS_TOKEN_TTL_SECONDS,
+  REFRESH_TOKEN_TTL_SECONDS,
   TOKEN_TTL_SECONDS,
+  verifyAppToken,
   verifyPassword,
 } from './auth';
 import { CurrentUser } from './user.decorator';
@@ -72,6 +78,12 @@ export class LoginDto {
   @MinLength(1)
   @MaxLength(128)
   password: string;
+}
+
+export class RefreshDto {
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
 }
 
 export class CreateUserDto {
@@ -153,18 +165,31 @@ export class AuthController {
       `Yeni kullanıcı kaydoldu: ${fullName} (@${username}, Rol: ${role})`,
     );
 
-    const token = signAppToken(newUser);
+    const tokens = signTokenPair(newUser);
     if (res) {
-      res.cookie('wc_token', token, {
+      res.cookie('wc_token', tokens.accessToken, {
         httpOnly: true,
         secure: isProduction(),
         sameSite: 'lax',
         path: '/',
-        maxAge: TOKEN_TTL_SECONDS * 1000,
+        maxAge: ACCESS_TOKEN_TTL_SECONDS * 1000,
+      });
+      res.cookie('wc_refresh_token', tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/api/auth',
+        maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
       });
     }
 
-    return { token, user: toPublicUser(newUser) };
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      token: tokens.accessToken,
+      expiresIn: tokens.expiresIn,
+      user: toPublicUser(newUser),
+    };
   }
 
   // 2. Kullanıcı Girişi (Public) — kaba kuvvet denemelerine karşı sınırlı
@@ -198,18 +223,31 @@ export class AuthController {
       `Kullanıcı sisteme giriş yaptı: ${user.fullName} (@${user.username})`,
     );
 
-    const token = signAppToken(user);
+    const tokens = signTokenPair(user);
     if (res) {
-      res.cookie('wc_token', token, {
+      res.cookie('wc_token', tokens.accessToken, {
         httpOnly: true,
         secure: isProduction(),
         sameSite: 'lax',
         path: '/',
-        maxAge: TOKEN_TTL_SECONDS * 1000,
+        maxAge: ACCESS_TOKEN_TTL_SECONDS * 1000,
+      });
+      res.cookie('wc_refresh_token', tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/api/auth',
+        maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
       });
     }
 
-    return { token, user: toPublicUser(user) };
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      token: tokens.accessToken,
+      expiresIn: tokens.expiresIn,
+      user: toPublicUser(user),
+    };
   }
 
   // 2.5. Oturumu Kapat (Cookie temizleme)
@@ -223,31 +261,70 @@ export class AuthController {
         sameSite: 'lax',
         path: '/',
       });
+      res.clearCookie('wc_refresh_token', {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/api/auth',
+      });
     }
     return { success: true, message: 'Oturum kapatıldı.' };
   }
 
-  // 2.6. Oturum / Token Yenileme (Refresh)
-  @UseGuards(JwtAuthGuard)
+  // 2.6. Oturum / Token Yenileme (Refresh) - Public & Refresh Token Doğrulamalı
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('refresh')
   async refresh(
-    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() body: RefreshDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res?: Response,
   ) {
-    const user = await this.usersRepo.findOne({ where: { id: currentUser.id } });
+    let rawRefreshToken = body?.refreshToken;
+    if (!rawRefreshToken && req.headers?.cookie) {
+      const match = req.headers.cookie.match(/(?:^|;\s*)wc_refresh_token=([^;]+)/);
+      if (match) rawRefreshToken = decodeURIComponent(match[1]);
+    }
+    if (!rawRefreshToken) {
+      rawRefreshToken = extractTokenFromRequest(req) ?? undefined;
+    }
+    if (!rawRefreshToken) {
+      throw new UnauthorizedException('Yenileme tokenı bulunamadı.');
+    }
+
+    const payload = verifyAppToken(rawRefreshToken);
+    if (!payload) {
+      throw new UnauthorizedException('Geçersiz veya süresi dolmuş token.');
+    }
+
+    const user = await this.usersRepo.findOne({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı.');
 
-    const token = signAppToken(user);
+    const tokens = signTokenPair(user);
     if (res) {
-      res.cookie('wc_token', token, {
+      res.cookie('wc_token', tokens.accessToken, {
         httpOnly: true,
         secure: isProduction(),
         sameSite: 'lax',
         path: '/',
-        maxAge: TOKEN_TTL_SECONDS * 1000,
+        maxAge: ACCESS_TOKEN_TTL_SECONDS * 1000,
+      });
+      res.cookie('wc_refresh_token', tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProduction(),
+        sameSite: 'lax',
+        path: '/api/auth',
+        maxAge: REFRESH_TOKEN_TTL_SECONDS * 1000,
       });
     }
-    return { token, user: toPublicUser(user) };
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      token: tokens.accessToken,
+      expiresIn: tokens.expiresIn,
+      user: toPublicUser(user),
+    };
   }
 
   // 3. Mevcut Kullanıcı Bilgisi

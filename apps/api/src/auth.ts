@@ -36,8 +36,12 @@ interface KeycloakClaims {
 export const Roles = (...roles: AppRole[]) => SetMetadata('roles', roles);
 export const Public = () => SetMetadata('isPublic', true);
 
-/** Erişim tokenı ömrü: bir vardiya (12 saat). */
-export const TOKEN_TTL_SECONDS = 12 * 3600;
+/** Kısa ömürlü Erişim Tokenı (Access Token): 15 dakika */
+export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+/** Uzun ömürlü Yenileme Tokenı (Refresh Token): 7 gün */
+export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 3600;
+/** Geriye dönük uyumluluk alias */
+export const TOKEN_TTL_SECONDS = ACCESS_TOKEN_TTL_SECONDS;
 
 export const isProduction = () => process.env.NODE_ENV === 'production';
 
@@ -94,12 +98,6 @@ const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 };
 const SCRYPT_KEYLEN = 64;
 export const MIN_PASSWORD_LENGTH = 8;
 
-/**
- * Eski sürümün (SHA-256 + sabit tuz) hash'lerini yalnızca DOĞRULAMAK için tutulur.
- * Bu formatla başarılı giriş yapan kullanıcının hash'i otomatik olarak scrypt'e yükseltilir.
- */
-const LEGACY_STATIC_SALT = 'wc-cleaning-secure-secret-2026-key';
-
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(16);
   const hash = await scryptAsync(password, salt, SCRYPT_KEYLEN, SCRYPT_PARAMS);
@@ -113,6 +111,7 @@ export async function verifyPassword(
 ): Promise<{ valid: boolean; needsRehash: boolean }> {
   if (!stored) return { valid: false, needsRehash: false };
 
+  // Yalnızca güvenli scrypt hash'leri kabul edilir; zayıf legacy SHA-256 saldırı yüzeyini kapatmak için kaldırılmıştır.
   if (stored.startsWith('scrypt$')) {
     const [, n, r, p, saltB64, hashB64] = stored.split('$');
     const expected = Buffer.from(hashB64, 'base64');
@@ -124,64 +123,102 @@ export async function verifyPassword(
     return { valid: safeEqual(actual, expected), needsRehash: false };
   }
 
-  // Eski format: sha256(password + sabit tuz)
-  const legacySalts = [LEGACY_STATIC_SALT, process.env.APP_JWT_SECRET].filter(Boolean) as string[];
-  for (const salt of legacySalts) {
-    const legacy = crypto.createHash('sha256').update(password + salt).digest('hex');
-    if (safeEqual(legacy, stored)) return { valid: true, needsRehash: true };
-  }
   return { valid: false, needsRehash: false };
 }
 
 // ---------------------------------------------------------------------------
-// Uygulama tokenı (HS256)
+// Uygulama tokenı (HS256) - Access & Refresh Token Çifti
 // ---------------------------------------------------------------------------
 export interface AppTokenPayload {
   sub: string;
   name: string;
   username: string;
   role: AppRole;
+  type?: 'access' | 'refresh';
   iat: number;
   exp: number;
 }
 
+export interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+  token: string;
+  expiresIn: number;
+}
+
 export function signAppToken(user: { id: string; fullName: string; username: string; role: string }): string {
+  return signTokenPair(user).accessToken;
+}
+
+export function signTokenPair(user: { id: string; fullName: string; username: string; role: string }): TokenPair {
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(
+
+  // 15 dakikalık Access Token
+  const accessPayload = Buffer.from(
     JSON.stringify({
       sub: user.id,
       name: user.fullName,
       username: user.username,
-      // Rol hiyerarşisi YOKTUR: her token yalnızca kullanıcının kendi rolünü taşır.
       role: user.role,
+      type: 'access',
+      jti: crypto.randomUUID(),
       iat: now,
-      exp: now + TOKEN_TTL_SECONDS,
+      exp: now + ACCESS_TOKEN_TTL_SECONDS,
     }),
   ).toString('base64url');
 
-  const signature = crypto
+  const accessSig = crypto
     .createHmac('sha256', getJwtSecret())
-    .update(`${header}.${payload}`)
+    .update(`${header}.${accessPayload}`)
     .digest('base64url');
 
-  return `${header}.${payload}.${signature}`;
+  const accessToken = `${header}.${accessPayload}.${accessSig}`;
+
+  // 7 günlük Refresh Token
+  const refreshPayload = Buffer.from(
+    JSON.stringify({
+      sub: user.id,
+      username: user.username,
+      type: 'refresh',
+      jti: crypto.randomUUID(),
+      iat: now,
+      exp: now + REFRESH_TOKEN_TTL_SECONDS,
+    }),
+  ).toString('base64url');
+
+  const refreshSig = crypto
+    .createHmac('sha256', getJwtSecret())
+    .update(`${header}.${refreshPayload}`)
+    .digest('base64url');
+
+  const refreshToken = `${header}.${refreshPayload}.${refreshSig}`;
+
+  return {
+    accessToken,
+    refreshToken,
+    token: accessToken,
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+  };
 }
 
-/** İstekten (Header, Query veya Cookie) token ayıklayıcı */
+/** İstekten (Header, Cookie veya yalnızca SSE için Query) token ayıklayıcı */
 export function extractTokenFromRequest(request: Request): string | null {
   const authHeader = request.headers?.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7);
-  }
-  if (typeof (request.query as Record<string, unknown>)?.token === 'string') {
-    return (request.query as Record<string, unknown>).token as string;
   }
   if (request.headers?.cookie) {
     const match = request.headers.cookie.match(/(?:^|;\s*)(?:wc_token|wc_auth)=([^;]+)/);
     if (match) {
       return decodeURIComponent(match[1]);
     }
+  }
+  // Güvenlik Sertleştirmesi (P1): Query string token kabulü yalnızca tarayıcı EventSource kısıtı olan SSE uç noktasıyla sınırlandırılmıştır.
+  // Standart REST API uç noktalarında log ve Referrer sızıntısını önlemek için URL'den token kabul edilmez.
+  const path = request.path || (request as any).url || '';
+  if (path.includes('/notifications/stream') && typeof (request.query as Record<string, unknown>)?.token === 'string') {
+    return (request.query as Record<string, unknown>).token as string;
   }
   return null;
 }
@@ -290,6 +327,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (rawToken) {
       const payload = verifyAppToken(rawToken);
       if (payload) {
+        if (payload.type === 'refresh') {
+          throw new UnauthorizedException('Yenileme (refresh) tokenı API uç noktalarında doğrudan kullanılamaz.');
+        }
         // Token geçerli olsa bile kullanıcı hâlâ var mı ve rolü ne? Veritabanı ve TTL cache esas alınır.
         const now = Date.now();
         const cached = userCache.get(payload.sub);

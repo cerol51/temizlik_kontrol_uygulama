@@ -333,47 +333,66 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     assert.equal(result.pendingCount, 2, 'Bekleyen slot sayısı 2 olmalı');
   });
 
-  await t.test('13. P2-1: HttpOnly Güvenli Cookie Doğrulaması, /auth/refresh ve /auth/logout', async () => {
-    // 1. Giriş yaparken Set-Cookie başlığında wc_token gelmeli
+  await t.test('13. P2-1: HttpOnly Güvenli Cookie Doğrulaması, Access & Refresh Token Rotasyonu ve Query Token Sızıntı Koruması', async () => {
+    // 1. Giriş yaparken accessToken, refreshToken ve Set-Cookie başlıkları dönmeli
     const loginRes = await fetch(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: 'admin', password: 'admin123' }),
     });
     assert.equal(loginRes.status, 201);
-    const setCookie = loginRes.headers.get('set-cookie');
-    assert.ok(setCookie, 'Set-Cookie başlığı dönmeli');
-    assert.match(setCookie, /wc_token=/);
-    assert.match(setCookie, /HttpOnly/i);
+    const loginData = await loginRes.json();
+    assert.ok(loginData.accessToken, 'accessToken dönmeli');
+    assert.ok(loginData.refreshToken, 'refreshToken dönmeli');
+    assert.equal(loginData.expiresIn, 900, 'Access token süresi 15 dakika (900s) olmalı');
+
+    const setCookies = loginRes.headers.get('set-cookie');
+    assert.ok(setCookies, 'Set-Cookie başlığı dönmeli');
+    assert.match(setCookies, /wc_token=/);
+    assert.match(setCookies, /wc_refresh_token=/);
+    assert.match(setCookies, /HttpOnly/i);
 
     // 2. Cookie ile Authorization header olmadan /auth/me çağrılabilmeli
-    const cookieToken = setCookie.split(';')[0];
+    const tokenCookie = setCookies.split(',').find((c) => c.includes('wc_token=')).split(';')[0].trim();
     const meRes = await fetch(`${API}/auth/me`, {
-      headers: { Cookie: cookieToken },
+      headers: { Cookie: tokenCookie },
     });
     assert.equal(meRes.status, 200);
     const meData = await meRes.json();
     assert.equal(meData.username, 'admin');
 
-    // 3. /auth/refresh ile token ve cookie yenilenebilmeli
+    // 3. GÜVENLİK KURALI: Refresh token doğrudan API uç noktalarında yetkilendirme olarak KULLANILAMAZ!
+    const directRefreshRes = await fetch(`${API}/auth/me`, {
+      headers: { Authorization: `Bearer ${loginData.refreshToken}` },
+    });
+    assert.equal(directRefreshRes.status, 401, 'Refresh token ile API isteği 401 Unauthorized dönmeli');
+
+    // 4. GÜVENLİK KURALI (P1): Query string token kabulü standart REST API uç noktalarında ENGELLENMELİ (log ve history sızıntısı önleme)
+    const queryTokenRes = await fetch(`${API}/auth/me?token=${loginData.accessToken}`);
+    assert.equal(queryTokenRes.status, 401, 'Query string ile API isteği 401 Unauthorized dönmeli');
+
+    // 5. /auth/refresh ile refreshToken verilerek yeni token çifti alınabilmeli (Token Rotation)
     const refreshRes = await fetch(`${API}/auth/refresh`, {
       method: 'POST',
-      headers: { Cookie: cookieToken },
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: loginData.refreshToken }),
     });
     assert.equal(refreshRes.status, 201);
     const refreshData = await refreshRes.json();
-    assert.ok(refreshData.token);
-    assert.ok(refreshRes.headers.get('set-cookie'));
+    assert.ok(refreshData.accessToken, 'Yeni accessToken üretilmeli');
+    assert.ok(refreshData.refreshToken, 'Yeni rotated refreshToken üretilmeli');
+    assert.notEqual(refreshData.accessToken, loginData.accessToken, 'Yeni access token üretilmeli');
 
-    // 4. /auth/logout ile cookie temizlenmeli
+    // 6. /auth/logout ile her iki cookie de temizlenmeli
     const logoutRes = await fetch(`${API}/auth/logout`, {
       method: 'POST',
-      headers: { Cookie: cookieToken },
+      headers: { Cookie: tokenCookie },
     });
     assert.equal(logoutRes.status, 201);
-    const logoutCookie = logoutRes.headers.get('set-cookie');
-    assert.ok(logoutCookie);
-    assert.match(logoutCookie, /wc_token=;/);
+    const logoutCookies = logoutRes.headers.get('set-cookie');
+    assert.ok(logoutCookies);
+    assert.match(logoutCookies, /wc_token=;/);
+    assert.match(logoutCookies, /wc_refresh_token=;/);
   });
 
   await t.test('14. P3-1: Medya ve Fotoğraf Depolama Servisi (MIME doğrulama, Base64 diske kaydetme ve statik akış)', async () => {
