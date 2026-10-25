@@ -19,9 +19,11 @@ import {
   fetchSupervisorStatusApi,
   formatTime,
   resolveIncidentApi,
+  resolveQrTokenApi,
   showAlert,
 } from '../api';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
+import { QrScannerModal } from '../components/QrScannerModal';
 
 const CLEANING_CHECKLIST_ITEMS = [
   'Ayna, lavabo ve bataryaların dezenfeksiyonu yapıldı',
@@ -44,8 +46,11 @@ export function StaffScreen({ user, token, onLogout }: Props) {
   const [loading, setLoading] = useState(false);
   const [taskTab, setTaskTab] = useState<'ALL' | 'MINE' | 'LOCATION'>('ALL');
 
-  // Routine cleaning modal state
+  // Routine cleaning modal & QR presence state
   const [cleaningModalOpen, setCleaningModalOpen] = useState(false);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [verifiedLocationToken, setVerifiedLocationToken] = useState<string | null>(null);
+  const [verifiedLocationName, setVerifiedLocationName] = useState<string | null>(null);
   const [checklistValues, setChecklistValues] = useState<Record<number, boolean>>({
     0: true,
     1: true,
@@ -110,30 +115,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     }
   }
 
-  async function handlePickPhoto() {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permissionResult.granted) {
-        showAlert('İzin Gerekli', 'Fotoğraf yükleyebilmek için galeri erişim izni vermelisiniz.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.5,
-        base64: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0].base64) {
-        setPhotoBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-      }
-    } catch (err: any) {
-      showAlert('Fotoğraf Hatası', err?.message || 'Fotoğraf seçilemedi.');
-    }
-  }
-
+  // 4. Kural: Galeriden yükleme kaldırıldı, yalnızca anlık kamera çekimi yapılabilir
   async function handleTakePhoto() {
     try {
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
@@ -145,7 +127,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.5,
+        quality: 0.35,
         base64: true,
       });
 
@@ -155,6 +137,46 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     } catch (err: any) {
       showAlert('Kamera Hatası', err?.message || 'Kamera açılamadı.');
     }
+  }
+
+  // 2. Kural: Personelin rutin temizlik listesini açması için QR kodu okutması zorunludur
+  function handleOpenCleaningChecklist() {
+    if (!verifiedLocationToken) {
+      setQrScannerOpen(true);
+      return;
+    }
+    setCleaningModalOpen(true);
+  }
+
+  async function handleCleaningQrScanned(scannedToken: string) {
+    setQrScannerOpen(false);
+    try {
+      const res = await resolveQrTokenApi(scannedToken);
+      if (res?.location) {
+        const matched =
+          locations.find((l) => l.id === res.location.id) ||
+          (res.location as unknown as Location);
+        setSelectedLocation(matched);
+        setVerifiedLocationToken(scannedToken);
+        setVerifiedLocationName(res.location.name);
+        setNotice({ text: `✓ Fiziki QR Doğrulandı: ${res.location.name}` });
+        setCleaningModalOpen(true);
+        return;
+      }
+    } catch {
+      const matched = locations.find(
+        (l) => l.token === scannedToken || `token-${l.code.toLowerCase()}` === scannedToken,
+      );
+      if (matched) {
+        setSelectedLocation(matched);
+        setVerifiedLocationToken(scannedToken);
+        setVerifiedLocationName(matched.name);
+        setNotice({ text: `✓ Fiziki QR Doğrulandı: ${matched.name}` });
+        setCleaningModalOpen(true);
+        return;
+      }
+    }
+    showAlert('Geçersiz QR', 'Okutulan QR kodu sistemdeki herhangi bir mahal ile eşleşmedi.');
   }
 
   async function handleSubmitCleaning() {
@@ -172,7 +194,7 @@ export function StaffScreen({ user, token, onLogout }: Props) {
       await createCleaningApi(
         {
           locationId: selectedLocation.id,
-          locationToken: selectedLocation.token,
+          locationToken: verifiedLocationToken || selectedLocation.token,
           staffName: user.fullName || user.username,
           items: CLEANING_CHECKLIST_ITEMS,
           note: cleaningNote.trim() || undefined,
@@ -185,6 +207,8 @@ export function StaffScreen({ user, token, onLogout }: Props) {
       showAlert('Başarılı', successMsg);
       setCleaningModalOpen(false);
       setCleaningNote('');
+      setVerifiedLocationToken(null);
+      setVerifiedLocationName(null);
       if (selectedLocation) {
         await refreshLocationData(selectedLocation.id);
       }
@@ -329,13 +353,19 @@ export function StaffScreen({ user, token, onLogout }: Props) {
         {/* PRIMARY ACTION BUTTON: Routine Cleaning Checklist */}
         <TouchableOpacity
           style={styles.mainActionBtn}
-          onPress={() => setCleaningModalOpen(true)}
+          onPress={handleOpenCleaningChecklist}
         >
-          <Text style={styles.mainActionIcon}>📋</Text>
+          <Text style={styles.mainActionIcon}>📷</Text>
           <View style={styles.mainActionTexts}>
-            <Text style={styles.mainActionTitle}>Rutin Temizlik Checklist'i Yap</Text>
+            <Text style={styles.mainActionTitle}>
+              {verifiedLocationToken
+                ? '✓ QR Doğrulandı - Temizlik Formunu Aç'
+                : 'QR Kod Okut ve Temizliği Başlat'}
+            </Text>
             <Text style={styles.mainActionSub}>
-              Periyodik kontrolleri onayla ve yeni temizlik kaydı oluştur
+              {verifiedLocationToken
+                ? `${verifiedLocationName || selectedLocation?.name} için temizlik onayı verilebilir`
+                : 'Personelin temizlik listesini açması için mahal QR kodu okutması zorunludur'}
             </Text>
           </View>
           <Text style={styles.mainActionArrow}>➔</Text>
@@ -483,8 +513,14 @@ export function StaffScreen({ user, token, onLogout }: Props) {
           <View style={styles.modalCard}>
             <Text style={styles.modalHeading}>Rutin Temizlik Checklist'i</Text>
             <Text style={styles.modalSubheading}>
-              {selectedLocation?.name} ({selectedLocation?.code})
+              {verifiedLocationName || selectedLocation?.name} ({selectedLocation?.code})
             </Text>
+
+            <View style={styles.verifiedBadgeRow}>
+              <Text style={styles.verifiedBadgeText}>
+                ✓ Fiziki QR Okutuldu &amp; Doğrulandı
+              </Text>
+            </View>
 
             <ScrollView style={styles.checklistScroll}>
               {CLEANING_CHECKLIST_ITEMS.map((item, idx) => {
@@ -522,7 +558,11 @@ export function StaffScreen({ user, token, onLogout }: Props) {
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
-                onPress={() => setCleaningModalOpen(false)}
+                onPress={() => {
+                  setCleaningModalOpen(false);
+                  setVerifiedLocationToken(null);
+                  setVerifiedLocationName(null);
+                }}
               >
                 <Text style={styles.modalCancelText}>İptal</Text>
               </TouchableOpacity>
@@ -563,15 +603,16 @@ export function StaffScreen({ user, token, onLogout }: Props) {
                 numberOfLines={2}
               />
 
-              <Text style={styles.inputLabel}>Fotoğraf Kanıtı (Opsiyonel / Tavsiye Edilen):</Text>
-              <View style={styles.photoActionsRow}>
-                <TouchableOpacity style={styles.photoBtn} onPress={handleTakePhoto}>
-                  <Text style={styles.photoBtnText}>📷 Fotoğraf Çek</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.photoBtn} onPress={handlePickPhoto}>
-                  <Text style={styles.photoBtnText}>🖼️ Galeriden Seç</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.inputLabel}>Müdahale Kanıt Fotoğrafı (Anlık Çekim Zorunlu):</Text>
+              <TouchableOpacity
+                style={[styles.photoBtn, { width: '100%', paddingVertical: 12, backgroundColor: '#0284c7' }]}
+                onPress={handleTakePhoto}
+              >
+                <Text style={styles.photoBtnText}>📷 Anlık Fotoğraf Çek</Text>
+                <Text style={{ color: '#bae6fd', fontSize: 10, marginTop: 3 }}>
+                  * Güvenlik kuralı gereği galeriden seçim yapılamaz, anlık kamera ile çekilmelidir.
+                </Text>
+              </TouchableOpacity>
 
               {photoBase64 && (
                 <View style={styles.previewBox}>
@@ -678,11 +719,37 @@ export function StaffScreen({ user, token, onLogout }: Props) {
           </View>
         </View>
       </Modal>
+
+      {/* QR Scanner Modal for Routine Cleaning Presence Verification */}
+      <QrScannerModal
+        open={qrScannerOpen}
+        title="Rutin Temizlik QR Doğrulaması"
+        subtitle="Personelin temizlik listesini açması için mahal kapısındaki QR kodu okutması zorunludur."
+        expectedLocation={selectedLocation}
+        locations={locations}
+        onClose={() => setQrScannerOpen(false)}
+        onScan={handleCleaningQrScanned}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  verifiedBadgeRow: {
+    backgroundColor: '#064e3b',
+    borderWidth: 1,
+    borderColor: '#10b981',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  verifiedBadgeText: {
+    color: '#6ee7b7',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   container: {
     flex: 1,
     backgroundColor: '#0f172a',

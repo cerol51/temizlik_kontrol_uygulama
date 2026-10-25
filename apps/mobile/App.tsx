@@ -15,6 +15,7 @@ export default function App() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isGuestMode, setIsGuestMode] = useState(false);
+  const [scannedGuestToken, setScannedGuestToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -24,6 +25,21 @@ export default function App() {
   async function restoreSession() {
     try {
       await initApiBaseUrl();
+
+      // Deep linking / QR URL kontrolü (Web ve Mobil)
+      if (typeof window !== 'undefined' && window.location) {
+        const params = new URLSearchParams(window.location.search);
+        const qToken =
+          params.get('q') ||
+          (window.location.pathname.startsWith('/q/')
+            ? window.location.pathname.split('/q/')[1]?.split('?')[0]
+            : null);
+        if (qToken) {
+          setScannedGuestToken(qToken);
+          setIsGuestMode(true);
+        }
+      }
+
       const [savedUser, savedToken] = await Promise.all([
         AsyncStorage.getItem(STORAGE_AUTH_USER),
         AsyncStorage.getItem(STORAGE_AUTH_TOKEN),
@@ -43,6 +59,7 @@ export default function App() {
     setUser(authUser);
     setToken(authToken);
     setIsGuestMode(false);
+    setScannedGuestToken(null);
     await Promise.all([
       AsyncStorage.setItem(STORAGE_AUTH_USER, JSON.stringify(authUser)),
       AsyncStorage.setItem(STORAGE_AUTH_TOKEN, authToken),
@@ -53,10 +70,16 @@ export default function App() {
     setUser(null);
     setToken(null);
     setIsGuestMode(false);
+    setScannedGuestToken(null);
     await Promise.all([
       AsyncStorage.removeItem(STORAGE_AUTH_USER),
       AsyncStorage.removeItem(STORAGE_AUTH_TOKEN),
     ]);
+  }
+
+  function handleOpenGuestQr(scannedToken: string) {
+    setScannedGuestToken(scannedToken);
+    setIsGuestMode(true);
   }
 
   if (!ready) {
@@ -68,11 +91,17 @@ export default function App() {
       <StatusBar barStyle="light-content" />
 
       {isGuestMode ? (
-        <GuestSurveyScreen onBackToRoles={() => setIsGuestMode(false)} />
+        <GuestSurveyScreen
+          scannedToken={scannedGuestToken || undefined}
+          onBackToRoles={() => {
+            setIsGuestMode(false);
+            setScannedGuestToken(null);
+          }}
+        />
       ) : !user || !token ? (
         <LoginScreen
           onLoginSuccess={handleLoginSuccess}
-          onOpenGuestMode={() => setIsGuestMode(true)}
+          onScanGuestQr={handleOpenGuestQr}
         />
       ) : user.role === 'supervisor' || user.role === 'admin' ? (
         <SupervisorScreen user={user} token={token} onLogout={handleLogout} />

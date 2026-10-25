@@ -10,17 +10,19 @@ import {
 } from 'react-native';
 import { getApiBaseUrl, loginApi, setApiBaseUrl , showAlert } from '../api';
 import { AppUser } from '../types';
+import { QrScannerModal } from '../components/QrScannerModal';
 
 interface Props {
   onLoginSuccess: (user: AppUser, token: string) => void;
-  onOpenGuestMode: () => void;
+  onScanGuestQr?: (token: string) => void;
 }
 
-export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
+export function LoginScreen({ onLoginSuccess, onScanGuestQr }: Props) {
   const isDemo = __DEV__ || process.env.EXPO_PUBLIC_DEMO_MODE === 'true';
   const [username, setUsername] = useState(isDemo ? 'ahmet' : '');
   const [password, setPassword] = useState(isDemo ? 'ahmet123' : '');
   const [loading, setLoading] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
 
   // Server settings modal
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -108,17 +110,22 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
           </>
         )}
 
-        {/* Guest Survey Kiosk Mode */}
-        <TouchableOpacity style={styles.guestKioskBtn} onPress={onOpenGuestMode}>
-          <Text style={styles.guestKioskIcon}>📋</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.guestKioskTitle}>Ziyaretçi Anket Modunu Aç</Text>
-            <Text style={styles.guestKioskSub}>
-              Saha tableti veya kiosk için doğrudan anket ekranına geçiş yap
-            </Text>
-          </View>
-          <Text style={styles.guestKioskArrow}>➔</Text>
-        </TouchableOpacity>
+        {/* Ziyaretçi QR Okutma Butonu - Yalnızca QR Okutulduğunda Açılır */}
+        {onScanGuestQr && (
+          <TouchableOpacity
+            style={styles.guestKioskBtn}
+            onPress={() => setQrModalOpen(true)}
+          >
+            <Text style={styles.guestKioskIcon}>📷</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guestKioskTitle}>Ziyaretçi Anketi (QR Okutunuz)</Text>
+              <Text style={styles.guestKioskSub}>
+                Geri bildirim anketi yalnızca kapıdaki QR kod okutulduğunda açılır
+              </Text>
+            </View>
+            <Text style={styles.guestKioskArrow}>➔</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Custom Login Form */}
         <View style={styles.divider}>
@@ -223,6 +230,17 @@ export function LoginScreen({ onLoginSuccess, onOpenGuestMode }: Props) {
           </View>
         </View>
       </Modal>
+
+      <QrScannerModal
+        open={qrModalOpen}
+        title="Ziyaretçi Anketi QR Doğrulama"
+        subtitle="Ziyaretçi anketini açmak için mahal kapısındaki QR kodu kameranın ortasına hizalayınız."
+        onClose={() => setQrModalOpen(false)}
+        onScan={(token) => {
+          setQrModalOpen(false);
+          onScanGuestQr?.(token);
+        }}
+      />
     </View>
   );
 }

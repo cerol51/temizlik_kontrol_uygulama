@@ -124,6 +124,10 @@ export async function fetchPublicStatusApi(tokenOrId: string): Promise<PublicLoc
   return apiRequest<PublicLocationStatus>(`/locations/${tokenOrId}/public`);
 }
 
+export async function resolveQrTokenApi(token: string): Promise<PublicLocationStatus> {
+  return apiRequest<PublicLocationStatus>(`/q/${token}`);
+}
+
 export async function fetchActiveChecklistApi(): Promise<{ versionTag: string; title: string; items: string[] }> {
   return apiRequest<{ versionTag: string; title: string; items: string[] }>('/checklists/active');
 }
@@ -227,6 +231,7 @@ export async function createCleaningApi(
 export async function createAuditApi(
   data: {
     locationId: string;
+    locationToken?: string;
     isApproved: boolean;
     checklist: Array<{ id: number; label: string; isOk: boolean }>;
     note?: string;
@@ -241,6 +246,7 @@ export async function createAuditApi(
       checklist: data.checklist,
       note: data.note?.trim() || (data.isApproved ? 'Eksiksiz onaylandı.' : 'Uygunsuzluk tespit edildi.'),
       templateVersion: data.templateVersion || 'v1.2',
+      locationToken: data.locationToken,
     }),
   });
 }

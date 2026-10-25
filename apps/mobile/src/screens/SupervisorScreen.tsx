@@ -20,10 +20,12 @@ import {
   fetchStaffUsersApi,
   fetchSupervisorStatusApi,
   formatTime,
+  resolveQrTokenApi,
   showAlert,
   verifyAndCloseIncidentApi,
 } from '../api';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
+import { QrScannerModal } from '../components/QrScannerModal';
 
 const DEFAULT_CHECKLIST_CRITERIA = [
   'Ayna ve lavabolar lekesiz',
@@ -65,8 +67,11 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   const [selectedStaffToAssign, setSelectedStaffToAssign] = useState<string>('Ahmet Temizlik');
   const [assigning, setAssigning] = useState(false);
 
-  // 3 Primary Action Modals
+  // 3 Primary Action Modals & QR presence state
   const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [verifiedAuditLocationToken, setVerifiedAuditLocationToken] = useState<string | null>(null);
+  const [verifiedAuditLocationName, setVerifiedAuditLocationName] = useState<string | null>(null);
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [currentCleaningsModalOpen, setCurrentCleaningsModalOpen] = useState(false);
 
@@ -208,6 +213,46 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
     }
   }
 
+  // 3. Kural: Şefin denetim listesini açması için QR okutması zorunludur
+  function handleOpenAuditChecklist() {
+    if (!verifiedAuditLocationToken) {
+      setQrScannerOpen(true);
+      return;
+    }
+    setAuditModalOpen(true);
+  }
+
+  async function handleAuditQrScanned(scannedToken: string) {
+    setQrScannerOpen(false);
+    try {
+      const res = await resolveQrTokenApi(scannedToken);
+      if (res?.location) {
+        const matched =
+          locations.find((l) => l.id === res.location.id) ||
+          (res.location as unknown as Location);
+        setSelectedLocation(matched);
+        setVerifiedAuditLocationToken(scannedToken);
+        setVerifiedAuditLocationName(res.location.name);
+        setNotice({ text: `✓ Şef Denetimi İçin QR Doğrulandı: ${res.location.name}` });
+        setAuditModalOpen(true);
+        return;
+      }
+    } catch {
+      const matched = locations.find(
+        (l) => l.token === scannedToken || `token-${l.code.toLowerCase()}` === scannedToken,
+      );
+      if (matched) {
+        setSelectedLocation(matched);
+        setVerifiedAuditLocationToken(scannedToken);
+        setVerifiedAuditLocationName(matched.name);
+        setNotice({ text: `✓ Şef Denetimi İçin QR Doğrulandı: ${matched.name}` });
+        setAuditModalOpen(true);
+        return;
+      }
+    }
+    showAlert('Geçersiz QR', 'Okutulan QR kodu sistemdeki herhangi bir mahal ile eşleşmedi.');
+  }
+
   async function handleSubmitAudit() {
     if (!selectedLocation) return;
     try {
@@ -223,6 +268,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       await createAuditApi(
         {
           locationId: selectedLocation.id,
+          locationToken: verifiedAuditLocationToken || undefined,
           isApproved,
           checklist: formattedChecklist,
           note: auditNote.trim() || undefined,
@@ -243,6 +289,8 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
       setAuditModalOpen(false);
       setAuditNote('');
+      setVerifiedAuditLocationToken(null);
+      setVerifiedAuditLocationName(null);
       // Reset answers to all true
       const resetAnswers: Record<number, boolean> = {};
       checklistCriteria.forEach((_, idx) => (resetAnswers[idx] = true));
@@ -574,18 +622,24 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
         {/* BOTTOM SECTION: SADECE 3 TEMEL BUTON */}
         <View style={styles.primaryActionsContainer}>
-          {/* BUTON 1: DENETİM YAP */}
+          {/* BUTON 1: QR İLE DENETİM YAP */}
           <TouchableOpacity
             style={styles.bigButtonAudit}
-            onPress={() => setAuditModalOpen(true)}
+            onPress={handleOpenAuditChecklist}
           >
             <View style={styles.bigBtnIconWrap}>
-              <Text style={styles.bigBtnIcon}>📋</Text>
+              <Text style={styles.bigBtnIcon}>📷</Text>
             </View>
             <View style={styles.bigBtnTexts}>
-              <Text style={styles.bigBtnTitle}>Denetim Yap</Text>
+              <Text style={styles.bigBtnTitle}>
+                {verifiedAuditLocationToken
+                  ? '✓ QR Doğrulandı - Denetimi Aç'
+                  : 'QR Kod Okut ve Denetime Başla'}
+              </Text>
               <Text style={styles.bigBtnDesc}>
-                {checklistCriteria.length} maddelik standart denetimi uygula (uygunsuzluklar otomatik atanır)
+                {verifiedAuditLocationToken
+                  ? `${verifiedAuditLocationName || selectedLocation?.name} için denetim formu hazır`
+                  : 'Şefin denetim listesini açması için mahal kapısındaki QR kodu okutması zorunludur'}
               </Text>
             </View>
             <Text style={styles.bigBtnArrow}>➔</Text>
@@ -633,8 +687,14 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
           <View style={styles.modalCard}>
             <Text style={styles.modalHeading}>Standart Şef Denetimi</Text>
             <Text style={styles.modalSubheading}>
-              {selectedLocation?.name} ({selectedLocation?.code})
+              {verifiedAuditLocationName || selectedLocation?.name} ({selectedLocation?.code})
             </Text>
+
+            <View style={styles.verifiedBadgeRow}>
+              <Text style={styles.verifiedBadgeText}>
+                ✓ Fiziki QR Okutuldu &amp; Doğrulandı
+              </Text>
+            </View>
 
             <ScrollView style={styles.modalScroll}>
               {checklistCriteria.map((criterion, idx) => {
@@ -698,7 +758,11 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
-                onPress={() => setAuditModalOpen(false)}
+                onPress={() => {
+                  setAuditModalOpen(false);
+                  setVerifiedAuditLocationToken(null);
+                  setVerifiedAuditLocationName(null);
+                }}
               >
                 <Text style={styles.modalCancelText}>İptal</Text>
               </TouchableOpacity>
@@ -887,11 +951,37 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
           </View>
         </View>
       </Modal>
+
+      {/* QR Scanner Modal for Supervisor Audit Presence Verification */}
+      <QrScannerModal
+        open={qrScannerOpen}
+        title="Şef Denetimi QR Doğrulaması"
+        subtitle="Şefin denetim listesini açması için mahal kapısındaki QR kodu okutması zorunludur."
+        expectedLocation={selectedLocation}
+        locations={locations}
+        onClose={() => setQrScannerOpen(false)}
+        onScan={handleAuditQrScanned}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  verifiedBadgeRow: {
+    backgroundColor: '#064e3b',
+    borderWidth: 1,
+    borderColor: '#10b981',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  verifiedBadgeText: {
+    color: '#6ee7b7',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   container: {
     flex: 1,
     backgroundColor: '#0f172a',

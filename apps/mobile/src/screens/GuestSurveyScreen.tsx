@@ -9,7 +9,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { fetchLocationsApi, fetchPublicStatusApi, formatTime, getApiBaseUrl, showAlert, submitSurveyApi } from '../api';
+import {
+  fetchLocationsApi,
+  fetchPublicStatusApi,
+  formatTime,
+  getApiBaseUrl,
+  resolveQrTokenApi,
+  showAlert,
+  submitSurveyApi,
+} from '../api';
 import { Location, PublicLocationStatus } from '../types';
 
 const ROOT_CAUSES = [
@@ -25,9 +33,10 @@ const ROOT_CAUSES = [
 
 interface Props {
   onBackToRoles?: () => void;
+  scannedToken?: string;
 }
 
-export function GuestSurveyScreen({ onBackToRoles }: Props) {
+export function GuestSurveyScreen({ onBackToRoles, scannedToken }: Props) {
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,11 +52,27 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
 
   useEffect(() => {
     loadLocations();
-  }, []);
+  }, [scannedToken]);
 
   async function loadLocations() {
     try {
       setLoading(true);
+
+      // 1. Eğer doğrudan QR kodu ile gelindiyse (/q/:token) önce onu çözümle
+      if (scannedToken) {
+        try {
+          const resolved = await resolveQrTokenApi(scannedToken);
+          if (resolved?.location) {
+            setSelectedLocation(resolved.location as unknown as Location);
+            setPublicStatus(resolved);
+            setLocations([resolved.location as unknown as Location]);
+            return;
+          }
+        } catch {
+          // Fallback to locations list
+        }
+      }
+
       const locs = await fetchLocationsApi();
       setLocations(locs);
       if (locs.length > 0 && !selectedLocation) {
@@ -61,8 +86,16 @@ export function GuestSurveyScreen({ onBackToRoles }: Props) {
               : null);
           const wcId = params.get('wc');
           if (qToken) {
-            const matched = locs.find((l) => l.token === qToken);
-            if (matched) initialLoc = matched;
+            try {
+              const res = await resolveQrTokenApi(qToken);
+              if (res?.location) {
+                initialLoc = res.location as unknown as Location;
+                setPublicStatus(res);
+              }
+            } catch {
+              const matched = locs.find((l) => l.token === qToken);
+              if (matched) initialLoc = matched;
+            }
           } else if (wcId) {
             const matched = locs.find((l) => l.id === wcId);
             if (matched) initialLoc = matched;
