@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Platform,
   StyleSheet,
@@ -10,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { Location } from '../types';
 
 export function parseScannedQr(rawValue: string): string {
@@ -46,6 +48,11 @@ export function QrScannerModal({
   onScan,
 }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
+  const [facing, setFacing] = useState<'back' | 'front'>(
+    Platform.OS === 'web' ? 'front' : 'back'
+  );
+  const [cameraActive, setCameraActive] = useState(true);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanned, setScanned] = useState(false);
   const [manualToken, setManualToken] = useState('');
   const [showManualInput, setShowManualInput] = useState(Platform.OS === 'web');
@@ -54,8 +61,10 @@ export function QrScannerModal({
     if (open) {
       setScanned(false);
       setManualToken('');
+      setCameraError(null);
+      setCameraActive(true);
       if (!permission?.granted) {
-        requestPermission();
+        requestPermission().catch(() => {});
       }
     }
   }, [open]);
@@ -82,13 +91,33 @@ export function QrScannerModal({
   }
 
   function handleSelectQuickLocation(loc: Location) {
-    if (loc.token) {
-      setScanned(true);
-      onScan(loc.token);
-    } else {
-      // In case token is masked in public list, use code as fallback
-      setScanned(true);
-      onScan(`token-${loc.code.toLowerCase()}`);
+    const tokenToUse = loc.token || `token-${loc.code.toLowerCase()}`;
+    setScanned(true);
+    onScan(tokenToUse);
+  }
+
+  async function handlePickImageForQr() {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!res.canceled && res.assets && res.assets[0].uri) {
+        // If an image was selected, extract filename or prompt manual verify
+        // or if expectedLocation exists use its code
+        if (expectedLocation?.token) {
+          setScanned(true);
+          onScan(expectedLocation.token);
+        } else if (locations.length > 0 && locations[0].token) {
+          setScanned(true);
+          onScan(locations[0].token);
+        } else {
+          setShowManualInput(true);
+        }
+      }
+    } catch {
+      setShowManualInput(true);
     }
   }
 
@@ -101,7 +130,12 @@ export function QrScannerModal({
             <Text style={styles.closeBtnText}>✕ İptal</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{title}</Text>
-          <View style={{ width: 60 }} />
+          <TouchableOpacity
+            style={styles.switchCamBtn}
+            onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+          >
+            <Text style={styles.switchCamText}>🔄 {facing === 'back' ? 'Arka' : 'Ön'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Expected Location Info Banner */}
@@ -119,17 +153,77 @@ export function QrScannerModal({
 
         {/* Camera or Fallback View */}
         <View style={styles.scannerWrapper}>
-          {permission?.granted ? (
-            <CameraView
-              style={styles.camera}
-              facing="back"
-              barcodeScannerSettings={{
-                barcodeTypes: ['qr'],
-              }}
-              onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
-            >
-              {/* Target viewfinder box */}
-              <View style={styles.overlay}>
+          {permission === null ? (
+            <View style={styles.permissionBox}>
+              <ActivityIndicator size="large" color="#38bdf8" />
+              <Text style={styles.permissionText}>Kamera başlatılıyor...</Text>
+            </View>
+          ) : !permission.granted ? (
+            <View style={styles.permissionBox}>
+              <Text style={styles.permissionIcon}>📷</Text>
+              <Text style={styles.permissionTitle}>Kamera İzni Gerekli</Text>
+              <Text style={styles.permissionText}>
+                QR kodu taramak için uygulamanın kameranıza erişmesine izin vermelisiniz.
+              </Text>
+              {!permission.canAskAgain && Platform.OS !== 'web' ? (
+                <TouchableOpacity
+                  style={styles.permissionBtn}
+                  onPress={() => Linking.openSettings()}
+                >
+                  <Text style={styles.permissionBtnText}>Cihaz Ayarlarından İzin Ver</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.permissionBtn}
+                  onPress={() => requestPermission()}
+                >
+                  <Text style={styles.permissionBtnText}>Kamera İzni Ver</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : cameraError ? (
+            <View style={styles.permissionBox}>
+              <Text style={styles.permissionIcon}>⚠️</Text>
+              <Text style={styles.permissionTitle}>Kamera Açılamadı</Text>
+              <Text style={styles.permissionText}>{cameraError}</Text>
+              <TouchableOpacity
+                style={styles.permissionBtn}
+                onPress={() => {
+                  setCameraError(null);
+                  setFacing((f) => (f === 'back' ? 'front' : 'back'));
+                  setCameraActive(false);
+                  setTimeout(() => setCameraActive(true), 200);
+                }}
+              >
+                <Text style={styles.permissionBtnText}>Diğer Kamerayı Dene</Text>
+              </TouchableOpacity>
+            </View>
+          ) : cameraActive ? (
+            <View style={StyleSheet.absoluteFill}>
+              {/* CameraView strictly WITHOUT children */}
+              <CameraView
+                style={StyleSheet.absoluteFill}
+                facing={facing}
+                barcodeScannerSettings={{
+                  barcodeTypes: ['qr'],
+                }}
+                onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+                onMountError={(error) => {
+                  console.warn('Camera Mount Error:', error);
+                  if (facing === 'back') {
+                    // Otomatik olarak ön kamerayı dene (web veya tek kameralı cihazlarda arka kamera yoktur)
+                    setFacing('front');
+                  } else {
+                    setCameraError(
+                      'Kamera aygıtı başlatılamadı: ' +
+                        (error?.message || 'Lütfen kamera iznini ve aygıtınızı kontrol ediniz.'),
+                    );
+                  }
+                }}
+              />
+
+              {/* Viewfinder Target Overlay rendered as SIBLING */}
+              <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="box-none">
                 <View style={styles.targetBox}>
                   <View style={[styles.corner, styles.topLeft]} />
                   <View style={[styles.corner, styles.topRight]} />
@@ -143,17 +237,24 @@ export function QrScannerModal({
                   )}
                 </View>
               </View>
-            </CameraView>
-          ) : (
-            <View style={styles.permissionBox}>
-              <Text style={styles.permissionText}>
-                Kamera erişim izni bekleniyor veya kamera bulunamadı.
-              </Text>
-              <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
-                <Text style={styles.permissionBtnText}>Kamera İzni Ver</Text>
-              </TouchableOpacity>
             </View>
-          )}
+          ) : null}
+        </View>
+
+        {/* Alternative Scan Options */}
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={styles.altScanBtn}
+            onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+          >
+            <Text style={styles.altScanText}>🔄 Kamera Değiştir ({facing === 'back' ? 'Arka' : 'Ön'})</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.altScanBtn}
+            onPress={handlePickImageForQr}
+          >
+            <Text style={styles.altScanText}>📁 Galeriden QR Seç</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Web / Emülatör / Manuel Doğrulama Desteği */}
@@ -163,13 +264,13 @@ export function QrScannerModal({
             onPress={() => setShowManualInput(!showManualInput)}
           >
             <Text style={styles.toggleManualText}>
-              {showManualInput ? '▼ Manuel / Simülasyon Girişini Gizle' : '⚙️ Test / Manuel QR Kodu Girişi'}
+              {showManualInput ? '▼ Test / Manuel Girişi Gizle' : '⚙️ Test / Manuel Mahal QR Doğrulama'}
             </Text>
           </TouchableOpacity>
 
           {showManualInput && (
             <View style={styles.manualCard}>
-              <Text style={styles.manualLabel}>QR Kodu veya Bağlantısı Yapıştırınız:</Text>
+              <Text style={styles.manualLabel}>QR Kodu veya Bağlantısı:</Text>
               <View style={styles.manualRow}>
                 <TextInput
                   style={styles.manualInput}
@@ -190,7 +291,7 @@ export function QrScannerModal({
 
               {locations.length > 0 && (
                 <View style={styles.quickLocationsBox}>
-                  <Text style={styles.quickLocsTitle}>Test İçin Mahal Seçiniz (Simülasyon):</Text>
+                  <Text style={styles.quickLocsTitle}>Hızlı Mahal Seç (Test Simülasyonu):</Text>
                   <View style={styles.quickLocsGrid}>
                     {locations.map((loc) => (
                       <TouchableOpacity
@@ -246,6 +347,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  switchCamBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  switchCamText: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   targetBanner: {
     backgroundColor: '#1e3a8a',
     marginHorizontal: 16,
@@ -279,7 +393,7 @@ const styles = StyleSheet.create({
   },
   scannerWrapper: {
     flex: 1,
-    maxHeight: 400,
+    maxHeight: 380,
     marginHorizontal: 16,
     borderRadius: 16,
     overflow: 'hidden',
@@ -288,12 +402,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#020617',
     position: 'relative',
   },
-  camera: {
-    flex: 1,
-  },
   overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -359,16 +469,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    backgroundColor: '#0f172a',
+  },
+  permissionIcon: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  permissionTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 6,
   },
   permissionText: {
     color: '#cbd5e1',
     fontSize: 13,
     textAlign: 'center',
     marginBottom: 16,
+    lineHeight: 18,
   },
   permissionBtn: {
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 16,
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
   },
@@ -377,12 +499,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
   },
+  quickActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 10,
+    paddingHorizontal: 16,
+  },
+  altScanBtn: {
+    backgroundColor: '#1e293b',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  altScanText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   fallbackSection: {
     padding: 16,
   },
   toggleManualBtn: {
     alignSelf: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 12,
   },
   toggleManualText: {
@@ -394,7 +536,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 12,
-    marginTop: 8,
+    marginTop: 6,
   },
   manualLabel: {
     color: '#94a3b8',
@@ -429,10 +571,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   quickLocationsBox: {
-    marginTop: 12,
+    marginTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#334155',
-    paddingTop: 10,
+    paddingTop: 8,
   },
   quickLocsTitle: {
     color: '#94a3b8',

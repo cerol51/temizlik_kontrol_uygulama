@@ -7,7 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Mahal kapısındaki QR kodları okutmak ve temizlik müdahale kanıtı çekmek için kamera erişimi gereklidir.",
+        "NSPhotoLibraryUsageDescription": "Fotoğraf kanıtı yüklemek için galeri erişimi gereklidir."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -16,8 +20,25 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Mahal kapısındaki QR kodları okutmak için kamera erişimi gereklidir."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Müdahale kanıt fotoğrafı çekmek için kamera erişimi gereklidir."
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }

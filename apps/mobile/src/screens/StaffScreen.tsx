@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -115,24 +116,53 @@ export function StaffScreen({ user, token, onLogout }: Props) {
     }
   }
 
-  // 4. Kural: Galeriden yükleme kaldırıldı, yalnızca anlık kamera çekimi yapılabilir
+  // 4. Kural: Anlık kamera çekimi (Android/iOS cropper hatası olmadan doğrudan çekim, web testi için fallback)
   async function handleTakePhoto() {
     try {
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
       if (!permissionResult.granted) {
-        showAlert('İzin Gerekli', 'Fotoğraf çekebilmek için kamera izni vermelisiniz.');
+        if (!permissionResult.canAskAgain && Platform.OS !== 'web') {
+          showAlert(
+            'Kamera İzni Gerekli',
+            'Kamera erişimi engellenmiş. Lütfen cihaz ayarlarından kamera iznini açınız.',
+            () => {
+              Linking.openSettings().catch(() => {});
+            },
+          );
+        } else {
+          showAlert('İzin Gerekli', 'Fotoğraf çekebilmek için kamera izni vermelisiniz.');
+        }
         return;
       }
 
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.35,
-        base64: true,
-      });
+      let result: ImagePicker.ImagePickerResult;
+      try {
+        result = await ImagePicker.launchCameraAsync({
+          allowsEditing: false,
+          quality: 0.35,
+          base64: true,
+        });
+      } catch (camErr: any) {
+        // Web ortamında veya harici kamera açamayan cihazlarda yedekleme
+        if (Platform.OS === 'web') {
+          result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: false,
+            quality: 0.35,
+            base64: true,
+          });
+        } else {
+          throw camErr;
+        }
+      }
 
-      if (!result.canceled && result.assets && result.assets[0].base64) {
-        setPhotoBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        if (asset.base64) {
+          setPhotoBase64(`data:image/jpeg;base64,${asset.base64}`);
+        } else if (asset.uri) {
+          setPhotoBase64(asset.uri);
+        }
       }
     } catch (err: any) {
       showAlert('Kamera Hatası', err?.message || 'Kamera açılamadı.');
