@@ -27,6 +27,10 @@ import { RestroomsController } from './restrooms.controller';
 import { AuthController } from './auth.controller';
 import { SeedService } from './seed.service';
 
+import { SlaService } from './domain/sla/sla.service';
+import { LocationsService } from './domain/locations/locations.service';
+import { IncidentsService } from './domain/incidents/incidents.service';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['../../.env', '.env'] }),
@@ -119,6 +123,9 @@ import { SeedService } from './seed.service';
     ReportsController,
   ],
   providers: [
+    SlaService,
+    LocationsService,
+    IncidentsService,
     NotificationsService,
     SeedService,
     JwtStrategy,
