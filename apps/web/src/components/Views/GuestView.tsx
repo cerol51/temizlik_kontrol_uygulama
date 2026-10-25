@@ -13,7 +13,7 @@ interface GuestViewProps {
   setSelectedIssues: (issues: string[]) => void;
   surveySent: boolean;
   rootCauses: readonly { id: string; label: string; short: string }[];
-  onQuickAdminLogin: () => void;
+  onQuickAdminLogin?: () => void;
   onOpenAuthModal: () => void;
   onOpenGuestSchedule: () => void;
   onRatingClick: (rating: 'good' | 'fair' | 'bad') => void;
@@ -106,35 +106,17 @@ export const GuestView: React.FC<GuestViewProps> = ({
               <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
                 Yönetim ve Personel Portalı
               </h3>
-              {import.meta.env.DEV && (
-                <span className="text-[11px] text-amber-700 font-mono font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                  DEV: admin / admin123
-                </span>
-              )}
             </div>
 
-            {import.meta.env.DEV && (
-              <button
-                type="button"
-                onClick={onQuickAdminLogin}
-                disabled={busy}
-                className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-amber-600/20 active:scale-[0.99] transition flex items-center justify-center gap-2 text-sm"
-              >
-                <i className="fa-solid fa-crown text-amber-200"></i>
-                Hızlı Demo Yönetici Girişi (Admin)
-              </button>
-            )}
-
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-600 pt-1">
-              <span>Personel, şef veya yönetici oturumu için:</span>
-              <button
-                type="button"
-                onClick={onOpenAuthModal}
-                className="text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
-              >
-                Giriş Yap
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onOpenAuthModal}
+              disabled={busy}
+              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-600/20 active:scale-[0.99] transition flex items-center justify-center gap-2 text-sm"
+            >
+              <i className="fa-solid fa-arrow-right-to-bracket text-indigo-200"></i>
+              Sistem Yetkili Girişi (Şef / Personel / Admin)
+            </button>
           </div>
 
           {/* MASAÜSTÜNDE SAHA SİMÜLASYONU / ÖNİZLEME */}

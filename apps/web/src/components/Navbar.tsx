@@ -11,7 +11,7 @@ interface NavbarProps {
   busy?: boolean;
   adminSubTab: 'overview' | 'locations' | 'users' | 'matrix' | 'audit';
   setAdminSubTab: (tab: 'overview' | 'locations' | 'users' | 'matrix' | 'audit') => void;
-  onQuickAdminLogin: () => void;
+  onOpenAuthModal?: () => void;
   onLogout: () => void;
   onOpenCreateLocation: () => void;
 }
@@ -26,7 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   busy = false,
   adminSubTab,
   setAdminSubTab,
-  onQuickAdminLogin,
+  onOpenAuthModal,
   onLogout,
   onOpenCreateLocation,
 }) => {
@@ -53,12 +53,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {currentTime}
                 </span>
                 <button
-                  onClick={onQuickAdminLogin}
+                  onClick={onOpenAuthModal}
                   disabled={busy}
-                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1.5 transition"
-                  title="Yönetici Olarak Hızlı Giriş Yap"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-1.5 transition"
+                  title="Sisteme Giriş Yap"
                 >
-                  <i className="fa-solid fa-crown"></i> Admin Girişi
+                  <i className="fa-solid fa-arrow-right-to-bracket"></i> Giriş Yap
                 </button>
               </div>
             </>

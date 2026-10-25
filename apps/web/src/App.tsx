@@ -1,276 +1,75 @@
-import Keycloak from 'keycloak-js';
+import React, { useEffect, useRef, useState } from 'react';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  api,
-  AppUser,
-  createLocation,
-  createUserApi,
-  DashboardData,
-  deleteLocation,
-  deleteUserApi,
-  downloadAuditCsvApi,
-  fetchActiveChecklistApi,
-  fetchStaffUsersApi,
-  fetchUsersApi,
-  Incident,
-  Location,
-  loginApi,
-  PublicLocationStatus,
-  regenerateLocationToken,
-  registerApi,
-  SupervisorLocationStatus,
-} from './api';
-
-// Modüler Bileşenler (Components)
 import { Navbar } from './components/Navbar';
-import { AdminHeader } from './components/Admin/AdminHeader';
-import { AdminOverview } from './components/Admin/AdminOverview';
-import { LocationManagement } from './components/Admin/LocationManagement';
-import { UserManagement } from './components/Admin/UserManagement';
-import { RoleMatrixTable } from './components/Admin/RoleMatrixTable';
-import { AuditTrailTable } from './components/Admin/AuditTrailTable';
-import { GuestView } from './components/Views/GuestView';
-import { StaffView } from './components/Views/StaffView';
-import { SupervisorView } from './components/Views/SupervisorView';
-
-// Modallar (Modals)
-import { QrModal } from './components/Modals/QrModal';
-import { CreateLocationModal } from './components/Modals/CreateLocationModal';
-import { CreateUserModal } from './components/Modals/CreateUserModal';
 import { PhotoPreviewModal } from './components/Modals/PhotoPreviewModal';
 import { AuthModal } from './components/Modals/AuthModal';
-import { PlannerModal } from './components/Modals/PlannerModal';
-import { SupervisorAuditModal } from './components/Modals/SupervisorAuditModal';
-import { StaffChecklistModal } from './components/Modals/StaffChecklistModal';
-import { StaffScheduleModal } from './components/Modals/StaffScheduleModal';
-import { StaffPastModal } from './components/Modals/StaffPastModal';
 
-const DEFAULT_CHECKLIST_ITEMS = [
-  'Ayna ve lavabolar lekesiz',
-  'Klozet ve pisuvarlar hijyenik',
-  'Zemin kuru ve temiz',
-  'Sabun / kağıt havlu dolu',
-  'Koku durumu ferah',
-  'Çöp kovası boş ve poşetli',
-] as const;
+// Modular Feature Sections
+import { GuestSection } from './features/guest/GuestSection';
+import { StaffSection } from './features/staff/StaffSection';
+import { SupervisorSection } from './features/supervisor/SupervisorSection';
+import { AdminSection } from './features/admin/AdminSection';
 
-const ROOT_CAUSES = [
-  { id: 'soap', label: '🧼 Sıvı Sabun Bitti', short: 'Sabun Yok' },
-  { id: 'paper', label: '🧻 Tuvalet Kağıdı Yok', short: 'Kağıt Yok' },
-  { id: 'floor', label: '💧 Zemin Islak / Kirli', short: 'Zemin Islak' },
-  { id: 'odor', label: '👃 Kötü Koku Var', short: 'Kötü Koku' },
-  { id: 'trash', label: '🗑️ Çöp Kovası Dolu', short: 'Çöp Dolu' },
-  { id: 'toilet', label: '🚽 Klozet / Pisuvar Kirli', short: 'Klozet Kirli' },
-  { id: 'sink', label: '🪞 Ayna / Lavabo Lekeli', short: 'Lavabo Kirli' },
-  { id: 'hardware', label: '🔧 Musluk / Ekipman Arızalı', short: 'Arıza Var' },
-] as const;
+// Centralized Zustand Stores & Hooks
+import { useAuthStore } from './stores/authStore';
+import { useLocationsStore } from './stores/locationsStore';
+import { useUiStore } from './stores/uiStore';
+import { useNotificationsSse } from './hooks/useNotificationsSse';
 
 export default function App() {
-  const keycloak = useMemo(
-    () =>
-      new Keycloak({
-        url: import.meta.env.VITE_OIDC_URL ?? 'http://localhost:8080',
-        realm: import.meta.env.VITE_OIDC_REALM ?? 'wc-cleaning',
-        clientId: import.meta.env.VITE_OIDC_CLIENT_ID ?? 'wc-web',
-      }),
-    [],
+  const user = useAuthStore((s) => s.user);
+  const token = useAuthStore((s) => s.token);
+  const role = useAuthStore((s) => s.role);
+  const activeTab = useAuthStore((s) => s.activeTab);
+  const setActiveTab = useAuthStore((s) => s.setActiveTab);
+  const login = useAuthStore((s) => s.login);
+  const register = useAuthStore((s) => s.register);
+  const logout = useAuthStore((s) => s.logout);
+
+  const locations = useLocationsStore((s) => s.locations);
+  const selectedId = useLocationsStore((s) => s.selectedId);
+  const setSelectedId = useLocationsStore((s) => s.setSelectedId);
+  const status = useLocationsStore((s) => s.status);
+  const fetchLocations = useLocationsStore((s) => s.fetchLocations);
+
+  const notice = useUiStore((s) => s.notice);
+  const setNotice = useUiStore((s) => s.setNotice);
+  const showNotice = useUiStore((s) => s.showNotice);
+  const photoPreviewUrl = useUiStore((s) => s.photoPreviewUrl);
+  const setPhotoPreviewUrl = useUiStore((s) => s.setPhotoPreviewUrl);
+  const authModalOpen = useUiStore((s) => s.authModalOpen);
+  const setAuthModalOpen = useUiStore((s) => s.setAuthModalOpen);
+  const scannerOpen = useUiStore((s) => s.scannerOpen);
+  const closeScanner = useUiStore((s) => s.closeScanner);
+
+  // Live time ticker
+  const [currentTime, setCurrentTime] = useState(() =>
+    new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
   );
-
-  const [ready, setReady] = useState(false);
-  const [, setAppError] = useState('');
-  const [role, setRole] = useState<'admin' | 'supervisor' | 'employee' | ''>(() => {
-    try {
-      const saved = localStorage.getItem('wc_user');
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u.username === 'admin' || u.role === 'admin') return 'admin';
-        if (u.role === 'supervisor') return 'supervisor';
-        if (u.role === 'employee') return 'employee';
-      }
-      return '';
-    } catch {
-      return '';
-    }
-  });
-
-  const [activeTab, setActiveTab] = useState<'guest' | 'employee' | 'supervisor' | 'admin'>(() => {
-    try {
-      const saved = localStorage.getItem('wc_user');
-      if (saved) {
-        const u = JSON.parse(saved);
-        if (u.username === 'admin' || u.role === 'admin') return 'admin';
-        if (u.role === 'supervisor') return 'supervisor';
-        if (u.role === 'employee') return 'employee';
-      }
-      return 'guest';
-    } catch {
-      return 'guest';
-    }
-  });
-
   const [adminSubTab, setAdminSubTab] = useState<'overview' | 'locations' | 'users' | 'matrix' | 'audit'>('overview');
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [selectedId, setSelectedId] = useState('');
-  const [status, setStatus] = useState<PublicLocationStatus | null>(null);
-  const [supervisorStatus, setSupervisorStatus] = useState<SupervisorLocationStatus | null>(null);
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-
-  // Ziyaretçi state
-  const [selectedRating, setSelectedRating] = useState<'good' | 'fair' | 'bad' | ''>('');
-  const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
-  const [surveySent, setSurveySent] = useState(false);
-  const [guestScheduleOpen, setGuestScheduleOpen] = useState(false);
-  const [previewGuestMode, setPreviewGuestMode] = useState(false);
-  const isDirectQrVisit = typeof window !== 'undefined' && (
-    window.location.pathname.startsWith('/q/') ||
-    window.location.search.includes('q=') ||
-    window.location.search.includes('wc=')
-  );
-
-  // Personel state
-  const [task1, setTask1] = useState(true);
-  const [task2, setTask2] = useState(true);
-  const [task3, setTask3] = useState(true);
-  const [task4, setTask4] = useState(true);
-  const [staffNote, setStaffNote] = useState('');
-  const [staffScheduleOpen, setStaffScheduleOpen] = useState(false);
-  const [staffPastOpen, setStaffPastOpen] = useState(false);
-  const [staffPhotoBase64, setStaffPhotoBase64] = useState('');
-  const [staffResolveNote, setStaffResolveNote] = useState('');
-  const [staffChecklistModalOpen, setStaffChecklistModalOpen] = useState(false);
-
-  // Şef state
-  const [checklistItems, setChecklistItems] = useState<string[]>([...DEFAULT_CHECKLIST_ITEMS]);
-  const [checklistVersion, setChecklistVersion] = useState<string>('v1.2');
-  const [checklistAnswers, setChecklistAnswers] = useState<Record<number, boolean>>({
-    0: true,
-    1: true,
-    2: true,
-    3: true,
-    4: true,
-    5: true,
-  });
-  const [auditNote, setAuditNote] = useState('');
-  const [plannerOpen, setPlannerOpen] = useState(false);
-  const [workingSchedule, setWorkingSchedule] = useState<string[]>([]);
-  const [workingTolerance, setWorkingTolerance] = useState<number>(15);
-  const [newTimeInput, setNewTimeInput] = useState('09:00');
-  const [assigneeMap, setAssigneeMap] = useState<Record<string, string>>({});
-  const [incidentFilterLoc, setIncidentFilterLoc] = useState<string>('all');
-  const [incidentFilterStatus, setIncidentFilterStatus] = useState<string>('all');
-  const [allIncidents, setAllIncidents] = useState<Incident[]>([]);
-  const [supervisorAuditModalOpen, setSupervisorAuditModalOpen] = useState(false);
-  const [viewPhotoUrl, setViewPhotoUrl] = useState<string | null>(null);
-
-  // Admin Mahal & Kullanıcı Yönetimi
-  const [adminModalOpen, setAdminModalOpen] = useState(false);
-  const [adminUserModalOpen, setAdminUserModalOpen] = useState(false);
-  const [printStickerModalOpen, setPrintStickerModalOpen] = useState(false);
-  const [stickerLoc, setStickerLoc] = useState<Location | null>(null);
-
-  // Kullanıcı Giriş & Kayıt & Oturum Durumu
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
-    try {
-      const saved = localStorage.getItem('wc_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('wc_token'));
-  const [usersList, setUsersList] = useState<AppUser[]>([]);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-
-  // UI / Kamera / Bildirim
-  const [scannerOpen, setScannerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
-  const [currentTime, setCurrentTime] = useState(new Date().toTimeString().substring(0, 8));
 
-  const scannerRef = useRef<IScannerControls | null>(null);
+  // QR Scanner refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const scannerRef = useRef<IScannerControls | null>(null);
 
-  // Saat sayacı
+  // 1. Subscribe to SSE real-time notifications for supervisor and admin
+  useNotificationsSse();
+
+  // 2. Clock update interval
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(new Date().toTimeString().substring(0, 8));
+      setCurrentTime(
+        new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      );
     }, 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // Dinamik Veritabanı Sürümlü Checklist'i Çekme
+  // 3. Initial location fetch & URL QR parsing
   useEffect(() => {
-    fetchActiveChecklistApi()
-      .then((res) => {
-        if (res?.items && res.items.length > 0) {
-          const labels = res.items
-            .map((i) => (typeof i === 'string' ? i : i.label))
-            .filter(Boolean);
-          if (labels.length > 0) {
-            setChecklistItems(labels);
-            if (res.versionTag || res.template?.version) {
-              setChecklistVersion(res.versionTag || res.template?.version || 'v1.2');
-            }
-            const initialAns: Record<number, boolean> = {};
-            labels.forEach((_, idx) => {
-              initialAns[idx] = true;
-            });
-            setChecklistAnswers(initialAns);
-          }
-        }
-      })
-      .catch(() => {
-        // Fallback varsayılan maddeler
-      });
-  }, []);
-
-  // Keycloak Başlatma
-  useEffect(() => {
-    let mounted = true;
-    keycloak
-      .init({
-        onLoad: 'check-sso',
-        silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
-        pkceMethod: 'S256',
-        checkLoginIframe: false,
-      })
-      .then((authenticated) => {
-        if (!mounted) return;
-        if (authenticated) {
-          const roles = keycloak.tokenParsed?.realm_access?.roles ?? [];
-          setRole(roles.includes('supervisor') ? 'supervisor' : roles.includes('employee') ? 'employee' : '');
-        }
-        setReady(true);
-      })
-      .catch((error: unknown) => {
-        if (mounted) {
-          setAppError(error instanceof Error ? error.message : 'Kimlik doğrulama servisine bağlanılamadı.');
-          setReady(true);
-        }
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [keycloak]);
-
-  const accessToken = useCallback(async () => {
-    if (authToken) {
-      return authToken;
-    }
-    if (keycloak.authenticated) {
-      await keycloak.updateToken(30).catch(() => {});
-      if (keycloak.token) return keycloak.token;
-    }
-    throw new Error('Önce kullanıcı hesabıyla giriş yapın.');
-  }, [authToken, keycloak]);
-
-  // Mahallerin Yüklenmesi
-  const loadLocations = useCallback(async () => {
-    try {
-      const items = await api<Location[]>('/locations', authToken || undefined);
-      setLocations(items);
-
+    void fetchLocations().then((items) => {
+      if (!items || items.length === 0) return;
       const params = new URLSearchParams(window.location.search);
       const tokenParam = params.get('q');
       const wcParam = params.get('wc');
@@ -278,149 +77,18 @@ export default function App() {
       if (tokenParam) {
         const found = items.find((l) => l.token === tokenParam);
         if (found) setSelectedId(found.id);
-        else setSelectedId(items[0]?.id || '');
       } else if (wcParam) {
-        const found = items.find((l) => l.id === wcParam);
+        const found = items.find((l) => l.id === wcParam || l.code === wcParam);
         if (found) setSelectedId(found.id);
-        else setSelectedId(items[0]?.id || '');
-      } else {
-        setSelectedId((curr) => curr || items[0]?.id || '');
+      } else if (window.location.pathname.startsWith('/q/')) {
+        const pathToken = window.location.pathname.replace('/q/', '').split('?')[0];
+        const found = items.find((l) => l.token === pathToken);
+        if (found) setSelectedId(found.id);
       }
-    } catch {
-      setAppError('Mahal listesi yüklenemedi.');
-    }
-  }, []);
+    });
+  }, [fetchLocations, setSelectedId]);
 
-  useEffect(() => {
-    if (!ready) return;
-    void loadLocations();
-  }, [ready, loadLocations]);
-
-  // Seçili Mahalin Durumunu Yükleme
-  const loadStatus = useCallback(async () => {
-    if (!selectedId) return;
-    try {
-      const pub = await api<PublicLocationStatus>(`/locations/${selectedId}/public`);
-      setStatus(pub);
-
-      if ((currentUser || keycloak.authenticated) && (role === 'supervisor' || role === 'employee' || role === 'admin')) {
-        const token = await accessToken();
-        const sup = await api<SupervisorLocationStatus>(`/locations/${selectedId}/supervisor`, token);
-        setSupervisorStatus(sup);
-      }
-    } catch (e) {
-      console.warn('Status load error:', e);
-    }
-  }, [accessToken, currentUser, keycloak.authenticated, role, selectedId]);
-
-  useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
-
-  // Olayları Yükleme
-  const loadIncidents = useCallback(async () => {
-    try {
-      const token = await accessToken();
-      const data = await api<Incident[]>('/incidents', token);
-      setAllIncidents(data);
-    } catch {
-      // fallback to dashboard
-    }
-  }, [accessToken]);
-
-  // Yönetim Paneli Yükleme
-  const loadDashboard = useCallback(async () => {
-    try {
-      const token = await accessToken();
-      const data = await api<DashboardData>('/reports/dashboard', token);
-      setDashboard(data);
-      if (data?.allIncidents && data.allIncidents.length > 0) {
-        setAllIncidents(data.allIncidents);
-      }
-    } catch (e) {
-      console.warn('Dashboard load error:', e);
-    }
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (role === 'supervisor' || role === 'admin') {
-      void loadDashboard();
-      void loadIncidents();
-      const interval = setInterval(() => {
-        void loadDashboard();
-        void loadIncidents();
-      }, 10000);
-      return () => clearInterval(interval);
-    } else if (role === 'employee') {
-      void loadIncidents();
-      const interval = setInterval(() => {
-        void loadIncidents();
-      }, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [role, loadDashboard, loadIncidents]);
-
-  // Rol İzolasyonu
-  useEffect(() => {
-    if (!role) {
-      if (activeTab !== 'guest') setActiveTab('guest');
-    } else if (role === 'employee') {
-      if (activeTab !== 'employee') setActiveTab('employee');
-    } else if (role === 'supervisor') {
-      if (activeTab !== 'supervisor') setActiveTab('supervisor');
-    } else if (role === 'admin') {
-      if (activeTab !== 'admin') setActiveTab('admin');
-    }
-  }, [role, activeTab]);
-
-  // Acil Durum Sireni
-  const playSiren = useCallback(() => {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(800, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.2);
-      osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.4);
-      osc.frequency.exponentialRampToValueAtTime(450, ctx.currentTime + 0.6);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.8);
-    } catch {
-      // Audio izni
-    }
-  }, []);
-
-  // SSE Canlı Bildirim Dinleyicisi
-  useEffect(() => {
-    if (role !== 'supervisor') return;
-    const sse = new EventSource('/api/notifications/stream');
-    sse.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'INCIDENT_ALERT' || data.type === 'ESCALATION_ALERT') {
-          playSiren();
-          setNotice({
-            text: `${data.title}: ${data.message}`,
-            bad: true,
-          });
-          void loadStatus();
-          void loadDashboard();
-        }
-      } catch {
-        // Parse error
-      }
-    };
-    return () => sse.close();
-  }, [role, playSiren, loadStatus, loadDashboard]);
-
-  // QR Tarama Başlatma
+  // 4. Video QR Camera Reader
   useEffect(() => {
     if (!scannerOpen || !videoRef.current) return;
     const reader = new BrowserMultiFormatReader();
@@ -433,8 +101,8 @@ export default function App() {
         let targetId = '';
 
         if (text.includes('/q/')) {
-          const token = text.split('/q/')[1]?.split('?')[0];
-          const found = locations.find((l) => l.token === token);
+          const tokenVal = text.split('/q/')[1]?.split('?')[0];
+          const found = locations.find((l) => l.token === tokenVal);
           if (found) targetId = found.id;
         } else if (text.includes('wc=')) {
           const id = new URL(text, window.location.origin).searchParams.get('wc');
@@ -443,16 +111,16 @@ export default function App() {
 
         if (targetId) {
           setSelectedId(targetId);
-          setScannerOpen(false);
-          setNotice({ text: 'Mahal QR kodu başarıyla algılandı.' });
+          closeScanner();
+          showNotice('✓ Mahal QR kodu başarıyla algılandı.');
         }
       })
       .then((controls) => {
         scannerRef.current = controls;
       })
       .catch((err) => {
-        setNotice({ text: 'Kamera açılamadı: ' + String(err), bad: true });
-        setScannerOpen(false);
+        showNotice('Kamera açılamadı: ' + String(err), true);
+        closeScanner();
       });
 
     return () => {
@@ -460,544 +128,47 @@ export default function App() {
       scannerRef.current?.stop();
       scannerRef.current = null;
     };
-  }, [scannerOpen, locations]);
+  }, [scannerOpen, locations, closeScanner, setSelectedId, showNotice]);
 
-  // Ziyaretçi Anket Gönderimi
-  const handleRatingClick = async (r: 'good' | 'fair' | 'bad') => {
-    setSelectedRating(r);
-    if (r === 'bad' || r === 'fair') {
-      // Hem kötü hem orta için kök neden ve geri bildirim formunu aç
-      setSelectedIssues([]);
-    } else {
-      try {
-        setBusy(true);
-        await api('/surveys', undefined, {
-          method: 'POST',
-          body: JSON.stringify({
-            locationId: selectedId,
-            rating: r,
-            issues: [],
-          }),
-        });
-        setSurveySent(true);
-        setTimeout(() => setSurveySent(false), 4000);
-      } catch (err: any) {
-        setNotice({ text: err.message, bad: true });
-      } finally {
-        setBusy(false);
-      }
-    }
-  };
+  const curLocation = locations.find((l) => l.id === selectedId) || locations[0];
 
-  const handleNegativeFeedbackSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (selectedRating === 'bad' && selectedIssues.length === 0) {
-      alert('Lütfen en az bir şikayet nedeni seçiniz.');
-      return;
-    }
+  const handleLogin = async (u: string, p: string) => {
     try {
       setBusy(true);
-      await api('/surveys', undefined, {
-        method: 'POST',
-        body: JSON.stringify({
-          locationId: selectedId,
-          rating: selectedRating,
-          issues: selectedIssues,
-        }),
-      });
-      setSurveySent(true);
-      setSelectedRating('');
-      setSelectedIssues([]);
-      setTimeout(() => setSurveySent(false), 4500);
-      void loadStatus();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Personel Temizlik Beyanı
-  const handleCleaningSubmit = async () => {
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      const res = await api<{ sla: { label: string } }>(
-        `/locations/${selectedId}/cleanings`,
-        token,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            tasksConfirmed: task1 && task2 && task3 && task4,
-            note: staffNote,
-          }),
-        },
-      );
-      setNotice({ text: `Temizlik beyanı alındı! SLA: ${res.sla.label}` });
-      setStaffNote('');
-      void loadStatus();
-      void loadDashboard();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (readerEvent) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxDim = 800;
-        let width = img.width;
-        let height = img.height;
-        if (width > height) {
-          if (width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          }
-        } else {
-          if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setStaffPhotoBase64(dataUrl);
-      };
-      img.src = readerEvent.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleStaffResolve = async (incidentId: string) => {
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      await api(`/incidents/${incidentId}/staff-resolve`, token, {
-        method: 'POST',
-        body: JSON.stringify({
-          note: staffResolveNote.trim() || staffNote.trim() || 'Sorun giderildi, sarf ikmali yapıldı.',
-          photoUrl: staffPhotoBase64 || undefined,
-        }),
-      });
-      setNotice({ text: '📸 Müdahale fotoğraflı olarak tamamlandı ve Şef onayına gönderildi!' });
-      setStaffPhotoBase64('');
-      setStaffResolveNote('');
-      void loadStatus();
-      void loadDashboard();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Şef Olay Görevlendirme
-  const handleDispatch = async (incidentId: string) => {
-    const defaultStaff = usersList.find((u) => u.role === 'employee');
-    const assignedVal = assigneeMap[incidentId];
-    const selectedUser =
-      usersList.find(
-        (u) =>
-          u.id === assignedVal ||
-          (u.fullName && u.fullName === assignedVal) ||
-          u.username === assignedVal,
-      ) || defaultStaff;
-
-    const staffId = selectedUser?.id || undefined;
-    const staffName = selectedUser?.fullName || selectedUser?.username || assignedVal || 'Ahmet Temizlik';
-
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      await api(`/incidents/${incidentId}/dispatch`, token, {
-        method: 'POST',
-        body: JSON.stringify({
-          assignedStaffId: staffId,
-          assignedStaffName: staffName,
-        }),
-      });
-      setNotice({ text: `Görev ${staffName} personeline başarıyla atandı!` });
-      void loadStatus();
-      void loadDashboard();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Şef Doğrulama ve Kapatma
-  const handleVerifyClose = async (incidentId: string) => {
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      await api(`/incidents/${incidentId}/verify-close`, token, {
-        method: 'POST',
-        body: JSON.stringify({ note: 'Şef tarafından yerinde incelendi ve kapatıldı.' }),
-      });
-      setNotice({ text: 'Olay şef tarafından başarıyla doğrulandı ve arşivlendi!' });
-      void loadStatus();
-      void loadDashboard();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Şef Checklist Denetim Gönderme
-  const handleAuditSubmit = async (isApproved: boolean) => {
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      const formattedChecklist = checklistItems.map((label, idx) => ({
-        id: idx + 1,
-        label,
-        isOk: checklistAnswers[idx] ?? true,
-      }));
-      const failedItems = formattedChecklist.filter((c) => !c.isOk).map((c) => c.label);
-      const effectiveIsApproved = isApproved && failedItems.length === 0;
-
-      const res = await api<{ correctiveIncident?: Incident }>(
-        `/locations/${selectedId}/audits`,
-        token,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            isApproved: effectiveIsApproved,
-            checklist: formattedChecklist,
-            note: auditNote,
-            templateVersion: checklistVersion,
-          }),
-        },
-      );
-      if (!effectiveIsApproved) {
-        const issuesSummary = failedItems.length > 0 ? failedItems.join(', ') : 'Denetim Uygunsuzluğu';
-        setNotice({
-          text: `Uygunsuzluk kaydedildi! Tespit edilen maddeler (${issuesSummary}) personele müdahale etmesi için otomatik olarak iletildi (${res.correctiveIncident?.id || 'Aktif Görev'})!`,
-          bad: true,
-        });
-      } else {
-        setNotice({ text: 'Denetim eksiksiz olarak onaylandı!' });
-      }
-      setAuditNote('');
-      void loadStatus();
-      void loadDashboard();
-      void loadIncidents();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Şef Planlayıcı Kaydetme
-  const handleSavePlanner = async () => {
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      await api(`/locations/${selectedId}/schedule`, token, {
-        method: 'PUT',
-        body: JSON.stringify({
-          schedule: workingSchedule,
-          toleranceMinutes: workingTolerance,
-        }),
-      });
-      setNotice({ text: 'Saat planı ve tolerans başarıyla kaydedildi!' });
-      setPlannerOpen(false);
-      void loadStatus();
-      void loadLocations();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Admin Mahal Silme & Token Yenileme
-  const handleRegenerateToken = async (loc: Location) => {
-    if (!window.confirm(`"${loc.name}" için mevcut QR tokenı iptal edilsin ve yeni bir güvenli token oluşturulsun mu?\n\nDikkat: Sahada asılı olan eski QR etiketi geçersiz olacaktır!`)) {
-      return;
-    }
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      const res = await regenerateLocationToken(loc.id, token);
-      setNotice({ text: `"${loc.name}" için yeni QR token üretildi!` });
-      await loadLocations();
-      setStickerLoc(res.location);
-      setPrintStickerModalOpen(true);
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleDeleteLocation = async (loc: Location) => {
-    if (!window.confirm(`"${loc.name}" (${loc.code}) WC mahali silinsin mi?`)) {
-      return;
-    }
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      await deleteLocation(loc.id, token);
-      setNotice({ text: `"${loc.name}" mahali silindi.` });
-      await loadLocations();
-      void loadDashboard();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Kullanıcı Girişi
-  const handleLogin = async (usernameInput: string, passwordInput: string) => {
-    try {
-      setBusy(true);
-      const res = await loginApi(usernameInput.trim(), passwordInput.trim());
-      setCurrentUser(res.user);
-      setAuthToken(res.token);
-      localStorage.setItem('wc_user', JSON.stringify(res.user));
-      localStorage.setItem('wc_token', res.token);
-      const userRole: 'admin' | 'supervisor' | 'employee' =
-        res.user.role === 'admin' || res.user.username === 'admin'
-          ? 'admin'
-          : res.user.role === 'supervisor'
-          ? 'supervisor'
-          : 'employee';
-      setRole(userRole);
-      setActiveTab(userRole);
+      const loggedUser = await login(u, p);
+      showNotice(`✓ Hoş geldiniz, ${loggedUser.fullName}!`);
       setAuthModalOpen(false);
-      const roleLabel = userRole === 'admin' ? '👑 Sistem Yöneticisi' : userRole === 'supervisor' ? '👔 Şef' : '🧹 Personel';
-      setNotice({ text: `Hoş geldiniz, ${res.user.fullName}! (${roleLabel})` });
-      void loadStatus();
-      if (userRole === 'admin' || userRole === 'supervisor') {
-        void loadDashboard();
-        void loadUsers();
-      }
     } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
+      showNotice(err.message || 'Giriş başarısız.', true);
     } finally {
       setBusy(false);
     }
   };
 
-  const handleRegister = async (fullNameInput: string, usernameInput: string, passwordInput: string) => {
+  const handleRegister = async (fullName: string, u: string, p: string) => {
     try {
       setBusy(true);
-      const res = await registerApi(fullNameInput.trim(), usernameInput.trim(), passwordInput.trim(), 'employee');
-      setCurrentUser(res.user);
-      setAuthToken(res.token);
-      localStorage.setItem('wc_user', JSON.stringify(res.user));
-      localStorage.setItem('wc_token', res.token);
-      const userRole: 'admin' | 'supervisor' | 'employee' =
-        res.user.role === 'admin' || res.user.username === 'admin'
-          ? 'admin'
-          : res.user.role === 'supervisor'
-          ? 'supervisor'
-          : 'employee';
-      setRole(userRole);
-      setActiveTab(userRole);
+      const registered = await register(u, p, fullName, 'employee');
+      showNotice(`✓ Kayıt başarılı! Hoş geldiniz, ${registered.fullName}!`);
       setAuthModalOpen(false);
-      setNotice({ text: `Hesabınız başarıyla oluşturuldu! Hoş geldiniz, ${res.user.fullName}.` });
-      void loadStatus();
-      if (userRole === 'admin' || userRole === 'supervisor') {
-        void loadDashboard();
-        void loadUsers();
-      }
     } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleQuickAdminLogin = async () => {
-    try {
-      setBusy(true);
-      const res = await loginApi('admin', 'admin123');
-      setCurrentUser(res.user);
-      setAuthToken(res.token);
-      localStorage.setItem('wc_user', JSON.stringify(res.user));
-      localStorage.setItem('wc_token', res.token);
-      setRole('admin');
-      setActiveTab('admin');
-      setNotice({ text: '👑 Sistem Yöneticisi olarak başarıyla giriş yapıldı.' });
-      void loadStatus();
-      void loadDashboard();
-      void loadUsers();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
+      showNotice(err.message || 'Kayıt başarısız.', true);
     } finally {
       setBusy(false);
     }
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
-    setAuthToken(null);
-    localStorage.removeItem('wc_user');
-    localStorage.removeItem('wc_token');
-    setRole('');
-    setActiveTab('guest');
-    setUsersList([]);
-    if (keycloak.authenticated) {
-      void keycloak.logout();
-    }
-    setNotice({ text: 'Oturum kapatıldı. Ziyaretçi moduna dönüldü.' });
+    logout();
+    showNotice('Oturum kapatıldı.');
   };
-
-  const loadUsers = useCallback(async () => {
-    try {
-      const token = await accessToken();
-      const list =
-        role === 'admin'
-          ? await fetchUsersApi(token)
-          : await fetchStaffUsersApi(token);
-      setUsersList(list);
-    } catch (err) {
-      console.warn('Kullanıcı listesi yüklenemedi:', err);
-    }
-  }, [accessToken, role]);
-
-  useEffect(() => {
-    if (role === 'admin' || role === 'supervisor') {
-      void loadUsers();
-    }
-  }, [role, loadUsers]);
-
-  const handleOpenPlanner = (loc?: Location) => {
-    const target = loc || locations.find((l) => l.id === selectedId) || locations[0];
-    if (!target) return;
-    setSelectedId(target.id);
-    setWorkingSchedule([...(target.schedule || ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'])]);
-    setWorkingTolerance(target.toleranceMinutes || 15);
-    setPlannerOpen(true);
-  };
-
-  const handleDownloadCsv = async () => {
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      await downloadAuditCsvApi(token);
-      setNotice({ text: 'Denetim izi CSV raporu başarıyla indirildi.' });
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleAdminCreateUser = async (user: {
-    fullName: string;
-    username: string;
-    password: string;
-    role: 'employee' | 'supervisor' | 'admin';
-  }) => {
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      const created = await createUserApi(user, token);
-      setNotice({ text: `Yeni kullanıcı (${created.fullName}) başarıyla sisteme eklendi!` });
-      setAdminUserModalOpen(false);
-      void loadUsers();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleAdminDeleteUser = async (user: AppUser) => {
-    if (currentUser?.id === user.id) {
-      alert('Şu anda oturum açık olan kendi hesabınızı silemezsiniz.');
-      return;
-    }
-    if (!window.confirm(`"${user.fullName}" (@${user.username}) kullanıcısını sistemden silmek istediğinize emin misiniz?`)) {
-      return;
-    }
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      await deleteUserApi(user.id, token);
-      setNotice({ text: `"${user.fullName}" kullanıcısı başarıyla silindi.` });
-      void loadUsers();
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleCreateLocationSubmit = async (locData: {
-    name: string;
-    code?: string;
-    building?: string;
-    toleranceMinutes?: number;
-    schedule?: string[];
-    schedulePreset?: string;
-    currentSupervisorName?: string;
-    backupSupervisorName?: string;
-  }) => {
-    let schedule =
-      locData.schedule && locData.schedule.length > 0
-        ? locData.schedule
-        : ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-    if (!locData.schedule && locData.schedulePreset === '1hour') {
-      schedule = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
-    } else if (!locData.schedule && locData.schedulePreset === '3shift') {
-      schedule = ['09:00', '14:00', '19:00'];
-    }
-
-    try {
-      setBusy(true);
-      const token = await accessToken();
-      const created = await createLocation(
-        {
-          name: locData.name,
-          code: locData.code,
-          building: locData.building,
-          toleranceMinutes: locData.toleranceMinutes,
-          schedule,
-          currentSupervisorName: locData.currentSupervisorName,
-          backupSupervisorName: locData.backupSupervisorName,
-        },
-        token,
-      );
-
-      setNotice({ text: `Yeni WC mahali (${created.name}) başarıyla oluşturuldu!` });
-      setAdminModalOpen(false);
-      await loadLocations();
-      void loadDashboard();
-      setStickerLoc(created);
-      setPrintStickerModalOpen(true);
-    } catch (err: any) {
-      setNotice({ text: err.message, bad: true });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const curLocation = locations.find((l) => l.id === selectedId) || locations[0];
 
   return (
-    <div className="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col antialiased">
-      {/* Üst Navigasyon Çubuğu */}
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* 1. ÜST ÇUBUK / NAVİGASYON */}
       <Navbar
         role={role}
-        currentUser={currentUser}
+        currentUser={user}
         currentTime={currentTime}
         locations={locations}
         selectedId={selectedId}
@@ -1005,26 +176,34 @@ export default function App() {
         busy={busy}
         adminSubTab={adminSubTab}
         setAdminSubTab={setAdminSubTab}
-        onQuickAdminLogin={handleQuickAdminLogin}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
         onLogout={handleLogout}
-        onOpenCreateLocation={() => setAdminModalOpen(true)}
+        onOpenCreateLocation={() => {
+          setActiveTab('admin');
+          setAdminSubTab('locations');
+        }}
       />
 
-      {/* Kamera QR Tarayıcı */}
+      {/* 2. QR Kamera Canlı Tarayıcı Katmanı */}
       {scannerOpen && (
-        <div className="max-w-md mx-auto my-3 p-4 bg-slate-900 rounded-2xl shadow-2xl text-center text-white">
+        <div className="fixed inset-x-4 top-16 max-w-sm mx-auto z-50 bg-slate-900 p-4 rounded-2xl border border-slate-700 shadow-2xl">
           <div className="flex justify-between items-center mb-2">
-            <span className="font-bold text-sm">QR Kod Tarayıcı</span>
-            <button onClick={() => setScannerOpen(false)} className="text-slate-400 hover:text-white">
-              ✕
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <i className="fa-solid fa-camera text-teal-400"></i> Kamera ile QR Okutun
+            </span>
+            <button
+              onClick={closeScanner}
+              className="text-xs bg-slate-800 text-slate-400 hover:text-white px-2 py-0.5 rounded"
+            >
+              ✕ Kapat
             </button>
           </div>
           <video ref={videoRef} className="w-full rounded-lg bg-black aspect-video object-cover" />
-          <p className="text-xs text-slate-400 mt-2">WC etiketindeki QR kodu kameraya gösteriniz.</p>
+          <p className="text-xs text-slate-400 mt-2">WC kapısındaki QR kodu kameraya gösteriniz.</p>
         </div>
       )}
 
-      {/* Bildirim Banner */}
+      {/* 3. Toast Bildirim Banner */}
       {notice && (
         <div
           className={`max-w-6xl mx-auto w-full my-2 px-4 py-2 rounded-lg text-xs font-semibold flex justify-between items-center ${
@@ -1034,250 +213,55 @@ export default function App() {
           }`}
         >
           <span>{notice.text}</span>
-          <button onClick={() => setNotice(null)} className="ml-2 font-bold">
+          <button onClick={() => setNotice(null)} className="ml-2 font-bold cursor-pointer">
             ✕
           </button>
         </div>
       )}
 
-      {/* Ana İçerik Alanı */}
+      {/* 4. Ana İçerik Alanı (Feature Modülleri) */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col items-center justify-start gap-6">
-        {/* 1. Misafir / Karşılama Ekranı */}
+        {/* Misafir / Ziyaretçi Ekranı */}
         {activeTab === 'guest' && (
-          <GuestView
-            isDirectQrVisit={isDirectQrVisit}
-            previewGuestMode={previewGuestMode}
-            setPreviewGuestMode={setPreviewGuestMode}
+          <GuestSection
             curLocation={curLocation}
             status={status}
             busy={busy}
-            selectedRating={selectedRating}
-            selectedIssues={selectedIssues}
-            setSelectedIssues={setSelectedIssues}
-            surveySent={surveySent}
-            rootCauses={ROOT_CAUSES}
-            onQuickAdminLogin={handleQuickAdminLogin}
-            onOpenAuthModal={() => setAuthModalOpen(true)}
-            onOpenGuestSchedule={() => setGuestScheduleOpen(true)}
-            onRatingClick={handleRatingClick}
-            onNegativeFeedbackSubmit={handleNegativeFeedbackSubmit}
           />
         )}
 
-        {/* 2. Personel Saha Görev Ekranı */}
+        {/* Personel Saha Görev Ekranı */}
         {activeTab === 'employee' && (
-          <StaffView
+          <StaffSection
             curLocation={curLocation}
             currentTime={currentTime}
-            allIncidents={allIncidents}
-            dashboard={dashboard}
-            supervisorStatus={supervisorStatus}
-            selectedId={selectedId}
-            staffPhotoBase64={staffPhotoBase64}
-            setStaffPhotoBase64={setStaffPhotoBase64}
-            staffResolveNote={staffResolveNote}
-            setStaffResolveNote={setStaffResolveNote}
-            busy={busy}
-            onPhotoSelect={handlePhotoSelect}
-            onViewPhoto={(url) => setViewPhotoUrl(url)}
-            onStaffResolve={handleStaffResolve}
-            onLoadIncidents={loadIncidents}
-            onOpenChecklistModal={() => setStaffChecklistModalOpen(true)}
-            onOpenScheduleModal={() => setStaffScheduleOpen(true)}
-            onOpenPastModal={() => setStaffPastOpen(true)}
           />
         )}
 
-        {/* 3. Şef Denetim ve Operasyon Portalı */}
+        {/* Şef Denetim ve Operasyon Portalı */}
         {activeTab === 'supervisor' && (
-          <SupervisorView
-            locations={locations}
+          <SupervisorSection
             curLocation={curLocation}
-            allIncidents={allIncidents}
-            dashboard={dashboard}
-            supervisorStatus={supervisorStatus}
-            staffList={usersList.filter((u) => u.role === 'employee')}
-            selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            incidentFilterLoc={incidentFilterLoc}
-            setIncidentFilterLoc={setIncidentFilterLoc}
-            incidentFilterStatus={incidentFilterStatus}
-            setIncidentFilterStatus={setIncidentFilterStatus}
-            assigneeMap={assigneeMap}
-            setAssigneeMap={setAssigneeMap}
-            onSetNotice={setNotice}
-            onViewPhoto={(url) => setViewPhotoUrl(url)}
-            onDispatch={handleDispatch}
-            onVerifyClose={handleVerifyClose}
-            onLoadIncidents={loadIncidents}
-            onOpenAuditModal={() => setSupervisorAuditModalOpen(true)}
-            onOpenScheduleModal={() => setStaffScheduleOpen(true)}
-            onOpenPastModal={() => setStaffPastOpen(true)}
-            onOpenPlannerModal={() => handleOpenPlanner(curLocation)}
           />
         )}
 
-        {/* 4. Sistem Yöneticisi (Admin) Merkezi */}
+        {/* Sistem Yöneticisi (Admin) Merkezi */}
         {activeTab === 'admin' && (
-          <div className="w-full max-w-5xl space-y-4">
-            <AdminHeader
-              currentUser={currentUser}
-              adminSubTab={adminSubTab}
-              setAdminSubTab={setAdminSubTab}
-              onOpenCreateLocation={() => setAdminModalOpen(true)}
-              onOpenCreateUser={() => setAdminUserModalOpen(true)}
-              onDownloadCsv={handleDownloadCsv}
-            />
-
-            {adminSubTab === 'overview' && (
-              <AdminOverview
-                locations={locations}
-                usersList={usersList}
-                dashboard={dashboard}
-              />
-            )}
-
-            {adminSubTab === 'locations' && (
-              <LocationManagement
-                locations={locations}
-                busy={busy}
-                onOpenCreateLocation={() => setAdminModalOpen(true)}
-                onOpenSticker={(loc) => {
-                  setStickerLoc(loc);
-                  setPrintStickerModalOpen(true);
-                }}
-                onOpenPlanner={(loc) => handleOpenPlanner(loc)}
-                onRegenerateToken={handleRegenerateToken}
-                onDeleteLocation={handleDeleteLocation}
-              />
-            )}
-
-            {adminSubTab === 'users' && (
-              <UserManagement
-                usersList={usersList}
-                currentUser={currentUser}
-                busy={busy}
-                onOpenCreateUser={() => setAdminUserModalOpen(true)}
-                onDeleteUser={handleAdminDeleteUser}
-              />
-            )}
-
-            {adminSubTab === 'matrix' && (
-              <RoleMatrixTable dashboard={dashboard} />
-            )}
-
-            {adminSubTab === 'audit' && (
-              <AuditTrailTable
-                dashboard={dashboard}
-                onDownloadCsv={handleDownloadCsv}
-              />
-            )}
-          </div>
+          <AdminSection />
         )}
       </main>
 
-      {/* MODALLAR */}
-      {/* 1. Şef Planlayıcı Modalı */}
-      <PlannerModal
-        isOpen={plannerOpen}
-        onClose={() => setPlannerOpen(false)}
-        curLocation={curLocation}
-        workingTolerance={workingTolerance}
-        setWorkingTolerance={setWorkingTolerance}
-        workingSchedule={workingSchedule}
-        setWorkingSchedule={setWorkingSchedule}
-        newTimeInput={newTimeInput}
-        setNewTimeInput={setNewTimeInput}
-        onSave={handleSavePlanner}
-      />
-
-      {/* 2. Ziyaretçi / Personel Günlük Temizlik Saatleri */}
-      <StaffScheduleModal
-        isOpen={guestScheduleOpen || staffScheduleOpen}
-        onClose={() => {
-          setGuestScheduleOpen(false);
-          setStaffScheduleOpen(false);
-        }}
-        curLocation={curLocation}
-        status={status}
-      />
-
-      {/* 3. Geçmiş Temizlik Kayıtları Modalı */}
-      <StaffPastModal
-        isOpen={staffPastOpen}
-        onClose={() => setStaffPastOpen(false)}
-        curLocation={curLocation}
-        supervisorStatus={supervisorStatus}
-      />
-
-      {/* 4. Personel Rutin Temizlik Checklist Modalı */}
-      <StaffChecklistModal
-        isOpen={staffChecklistModalOpen}
-        onClose={() => setStaffChecklistModalOpen(false)}
-        curLocation={curLocation}
-        task1={task1}
-        setTask1={setTask1}
-        task2={task2}
-        setTask2={setTask2}
-        task3={task3}
-        setTask3={setTask3}
-        task4={task4}
-        setTask4={setTask4}
-        staffNote={staffNote}
-        setStaffNote={setStaffNote}
-        busy={busy}
-        onSubmit={handleCleaningSubmit}
-      />
-
-      {/* 5. Şef Kalite Denetim Modalı (Dinamik Sürümlü Checklist) */}
-      <SupervisorAuditModal
-        isOpen={supervisorAuditModalOpen}
-        onClose={() => setSupervisorAuditModalOpen(false)}
-        curLocation={curLocation}
-        items={checklistItems}
-        checklistAnswers={checklistAnswers}
-        setChecklistAnswers={setChecklistAnswers}
-        auditNote={auditNote}
-        setAuditNote={setAuditNote}
-        busy={busy}
-        onSubmit={handleAuditSubmit}
-      />
-
-      {/* 6. Kanıt Fotoğrafı Büyütme Modalı */}
+      {/* 5. Genel Modallar */}
       <PhotoPreviewModal
-        photoUrl={viewPhotoUrl}
-        onClose={() => setViewPhotoUrl(null)}
+        photoUrl={photoPreviewUrl}
+        onClose={() => setPhotoPreviewUrl(null)}
       />
 
-      {/* 7. Admin Yeni WC Ekleme Modalı */}
-      <CreateLocationModal
-        open={adminModalOpen}
-        onClose={() => setAdminModalOpen(false)}
-        onSubmit={handleCreateLocationSubmit}
-        busy={busy}
-      />
-
-      {/* 8. QR Kod & Yazdırılabilir Etiket Modalı */}
-      <QrModal
-        open={printStickerModalOpen}
-        onClose={() => setPrintStickerModalOpen(false)}
-        location={stickerLoc}
-      />
-
-      {/* 9. Kullanıcı Giriş & Kayıt Ol Modalı */}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         onLogin={handleLogin}
         onRegister={handleRegister}
-        busy={busy}
-      />
-
-      {/* 10. Admin Yeni Kullanıcı Ekleme Modalı */}
-      <CreateUserModal
-        isOpen={adminUserModalOpen}
-        onClose={() => setAdminUserModalOpen(false)}
-        onSubmit={handleAdminCreateUser}
         busy={busy}
       />
     </div>
