@@ -66,11 +66,12 @@ import { MediaController } from './media/media.controller';
 
         if (usePg) {
           console.log(`[Database] PostgreSQL veritabanına bağlanıldı (${pgUrl}).`);
+          const isProd = process.env.NODE_ENV === 'production';
           const ds = new DataSource({
             ...options,
             type: 'postgres',
             url: pgUrl,
-            synchronize: true,
+            synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true' || !isProd,
           } as DataSourceOptions);
           return await ds.initialize();
         } else {
