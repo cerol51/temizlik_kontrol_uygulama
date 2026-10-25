@@ -600,6 +600,26 @@ test('Güvenlik ve Yetki Matrisi Testleri', async (t) => {
     });
     assert.equal(resForbidden.status, 403);
   });
+
+  await t.test('19. P3-2: Kurumsal Canlılık ve Hazırlık (Liveness & Readiness) Teşhis Probları (/health, /health/ready)', async () => {
+    // 1. Liveness kontrolü (/health)
+    const livenessRes = await fetch(`${API}/health`);
+    assert.equal(livenessRes.status, 200);
+    const liveness = await livenessRes.json();
+    assert.equal(liveness.status, 'ok');
+    assert.ok(liveness.version);
+    assert.ok(liveness.timestamp);
+
+    // 2. Readiness kontrolü (/health/ready): DB bağlantısı, bellek, uptime
+    const readinessRes = await fetch(`${API}/health/ready`);
+    assert.equal(readinessRes.status, 200);
+    const readiness = await readinessRes.json();
+    assert.equal(readiness.status, 'UP');
+    assert.equal(readiness.checks.database.status, 'UP');
+    assert.equal(typeof readiness.checks.database.latencyMs, 'number');
+    assert.ok(readiness.checks.memory.heapUsedMb > 0);
+    assert.ok(readiness.checks.process.uptimeSeconds >= 0);
+  });
 });
 
 

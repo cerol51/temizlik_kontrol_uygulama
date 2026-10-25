@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createCleaningApi, resolveIncidentApi, isNetworkError } from './api';
+import {
+  createAuditApi,
+  createCleaningApi,
+  isNetworkError,
+  resolveIncidentApi,
+  verifyAndCloseIncidentApi,
+} from './api';
 
 export interface QueuedCleaningPayload {
   locationId: string;
@@ -14,6 +20,20 @@ export interface QueuedResolvePayload {
   incidentId: string;
   resolutionNote?: string;
   photoUrl?: string;
+}
+
+export interface QueuedAuditPayload {
+  locationId: string;
+  locationToken?: string;
+  isApproved: boolean;
+  checklist: Array<{ id: number; label: string; isOk: boolean }>;
+  note?: string;
+  templateVersion?: string;
+}
+
+export interface QueuedVerifyClosePayload {
+  incidentId: string;
+  note?: string;
 }
 
 export type QueuedAction =
@@ -31,6 +51,22 @@ export type QueuedAction =
       idempotencyKey: string;
       createdAt: number;
       payload: QueuedResolvePayload;
+      retryCount: number;
+    }
+  | {
+      id: string;
+      type: 'AUDIT';
+      idempotencyKey: string;
+      createdAt: number;
+      payload: QueuedAuditPayload;
+      retryCount: number;
+    }
+  | {
+      id: string;
+      type: 'VERIFY_CLOSE';
+      idempotencyKey: string;
+      createdAt: number;
+      payload: QueuedVerifyClosePayload;
       retryCount: number;
     };
 
@@ -55,7 +91,9 @@ export async function getPendingActionsCount(): Promise<number> {
 export async function enqueueAction(
   action:
     | { type: 'CLEANING'; idempotencyKey: string; payload: QueuedCleaningPayload }
-    | { type: 'RESOLVE_INCIDENT'; idempotencyKey: string; payload: QueuedResolvePayload },
+    | { type: 'RESOLVE_INCIDENT'; idempotencyKey: string; payload: QueuedResolvePayload }
+    | { type: 'AUDIT'; idempotencyKey: string; payload: QueuedAuditPayload }
+    | { type: 'VERIFY_CLOSE'; idempotencyKey: string; payload: QueuedVerifyClosePayload },
 ): Promise<void> {
   try {
     const queue = await getOfflineQueue();
@@ -95,6 +133,12 @@ export async function syncPendingQueue(
           item.payload.photoUrl,
           token,
         );
+        synced++;
+      } else if (item.type === 'AUDIT') {
+        await createAuditApi(item.payload, token);
+        synced++;
+      } else if (item.type === 'VERIFY_CLOSE') {
+        await verifyAndCloseIncidentApi(item.payload.incidentId, item.payload.note, token);
         synced++;
       }
     } catch (err: any) {

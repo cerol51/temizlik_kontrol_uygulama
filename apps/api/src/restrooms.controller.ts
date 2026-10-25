@@ -56,8 +56,46 @@ export class RestroomsController {
 
   @Get('health')
   @Public()
-  health(): { status: string; version: string } {
-    return { status: 'ok', version: '2.0.0' };
+  health(): { status: string; version: string; timestamp: string } {
+    return { status: 'ok', version: '2.0.0', timestamp: new Date().toISOString() };
+  }
+
+  // Kurumsal Readiness (Hazırlık) Probu: Veritabanı canlılığı, bellek kullanımı ve çalışma süresi
+  @Get('health/ready')
+  @Public()
+  async healthReady() {
+    const start = Date.now();
+    let dbStatus = 'UP';
+    let dbLatencyMs = 0;
+    try {
+      await this.templates.query('SELECT 1');
+      dbLatencyMs = Date.now() - start;
+    } catch {
+      dbStatus = 'DOWN';
+    }
+
+    const mem = process.memoryUsage();
+    const isHealthy = dbStatus === 'UP';
+
+    return {
+      status: isHealthy ? 'UP' : 'DOWN',
+      checks: {
+        database: {
+          status: dbStatus,
+          latencyMs: dbLatencyMs,
+        },
+        memory: {
+          rssMb: Math.round(mem.rss / 1024 / 1024),
+          heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+          heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+        },
+        process: {
+          uptimeSeconds: Math.round(process.uptime()),
+          nodeVersion: process.version,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    };
   }
 
   // Sürümlü Aktif Checklist Şablonunu Getir

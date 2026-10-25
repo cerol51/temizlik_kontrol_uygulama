@@ -20,10 +20,16 @@ import {
   fetchStaffUsersApi,
   fetchSupervisorStatusApi,
   formatTime,
+  isNetworkError,
   resolveQrTokenApi,
   showAlert,
   verifyAndCloseIncidentApi,
 } from '../api';
+import {
+  enqueueAction,
+  getPendingActionsCount,
+  syncPendingQueue,
+} from '../offlineQueue';
 import { AppUser, Incident, Location, SupervisorLocationStatus } from '../types';
 import { QrScannerModal } from '../components/QrScannerModal';
 
@@ -55,6 +61,7 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   const [allIncidents, setAllIncidents] = useState<Incident[]>([]);
   const [staffUsers, setStaffUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
 
   // Filter state for incidents
   const [incidentFilterStatus, setIncidentFilterStatus] = useState<
@@ -115,6 +122,14 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
   async function loadAllData() {
     try {
       setLoading(true);
+
+      // Çevrimdışı bekleyen işlem varsa senkronize et
+      const syncRes = await syncPendingQueue(token);
+      if (syncRes.synced > 0) {
+        setNotice({ text: `✓ ${syncRes.synced} çevrimdışı işlem merkeze aktarıldı.` });
+      }
+      setPendingOfflineCount(syncRes.remaining);
+
       const [locs, incs, users, clData] = await Promise.all([
         fetchLocationsApi(),
         fetchAllIncidentsApi(token),
@@ -207,6 +222,22 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       const incs = await fetchAllIncidentsApi(token);
       setAllIncidents(incs);
     } catch (err: any) {
+      if (isNetworkError(err)) {
+        const idempotencyKey = `mob_verify_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        await enqueueAction({
+          type: 'VERIFY_CLOSE',
+          idempotencyKey,
+          payload: {
+            incidentId: inc.id,
+          },
+        });
+        const count = await getPendingActionsCount();
+        setPendingOfflineCount(count);
+        const offlineMsg = '📶 Çevrimdışı Kaydedildi: Doğrulama ve kapatma işlemi hafızaya alındı. İnternet gelince şefe iletilecektir.';
+        setNotice({ text: offlineMsg });
+        showAlert('Çevrimdışı Kayıt', offlineMsg);
+        return;
+      }
       const errMsg = err?.message || 'Olay kapatılamadı.';
       setNotice({ text: errMsg, bad: true });
       showAlert('Hata', errMsg);
@@ -255,16 +286,16 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
 
   async function handleSubmitAudit() {
     if (!selectedLocation) return;
+    const formattedChecklist = checklistCriteria.map((criterion, idx) => ({
+      id: idx + 1,
+      label: criterion,
+      isOk: auditAnswers[idx] ?? true,
+    }));
+    const nonCompliantItems = formattedChecklist.filter((c) => !c.isOk);
+    const isApproved = nonCompliantItems.length === 0;
+
     try {
       setSubmittingAudit(true);
-      const formattedChecklist = checklistCriteria.map((criterion, idx) => ({
-        id: idx + 1,
-        label: criterion,
-        isOk: auditAnswers[idx] ?? true,
-      }));
-      const nonCompliantItems = formattedChecklist.filter((c) => !c.isOk);
-      const isApproved = nonCompliantItems.length === 0;
-
       await createAuditApi(
         {
           locationId: selectedLocation.id,
@@ -296,9 +327,32 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
       checklistCriteria.forEach((_, idx) => (resetAnswers[idx] = true));
       setAuditAnswers(resetAnswers);
 
-      // Refresh data
-      await loadAllData();
     } catch (err: any) {
+      if (isNetworkError(err)) {
+        const idempotencyKey = `mob_audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        await enqueueAction({
+          type: 'AUDIT',
+          idempotencyKey,
+          payload: {
+            locationId: selectedLocation.id,
+            locationToken: verifiedAuditLocationToken || undefined,
+            isApproved,
+            checklist: formattedChecklist,
+            note: auditNote.trim() || undefined,
+            templateVersion: checklistVersion,
+          },
+        });
+        const count = await getPendingActionsCount();
+        setPendingOfflineCount(count);
+        const offlineMsg = `📶 Çevrimdışı Kaydedildi: Ağ bağlantısı olmadığı için denetim hafızaya alındı (${selectedLocation.name}). İnternet gelince merkeze aktarılacaktır.`;
+        setNotice({ text: offlineMsg });
+        showAlert('Çevrimdışı Kayıt', offlineMsg);
+        setAuditModalOpen(false);
+        setAuditNote('');
+        setVerifiedAuditLocationToken(null);
+        setVerifiedAuditLocationName(null);
+        return;
+      }
       const errMsg = err?.message || 'Denetim kaydedilemedi.';
       setNotice({ text: errMsg, bad: true });
       showAlert('Hata', errMsg);
@@ -354,6 +408,33 @@ export function SupervisorScreen({ user, token, onLogout }: Props) {
           <Text style={styles.noticeText}>{notice.text}</Text>
           <TouchableOpacity onPress={() => setNotice(null)}>
             <Text style={styles.noticeClose}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Offline sync banner */}
+      {pendingOfflineCount > 0 && (
+        <View style={styles.offlineSyncBox}>
+          <Text style={styles.offlineSyncText}>
+            📶 {pendingOfflineCount} işlem çevrimdışı sırada bekliyor
+          </Text>
+          <TouchableOpacity
+            style={styles.offlineSyncBtn}
+            onPress={async () => {
+              const res = await syncPendingQueue(token);
+              if (res.synced > 0) {
+                setNotice({ text: `✓ ${res.synced} işlem merkeze aktarıldı.` });
+                void loadAllData();
+              } else if (res.failed > 0) {
+                showAlert(
+                  'Bağlantı Yok',
+                  'Sunucuya erişilemedi. İnternet bağlantısı sağlandığında tekrar deneyiniz.',
+                );
+              }
+              setPendingOfflineCount(res.remaining);
+            }}
+          >
+            <Text style={styles.offlineSyncBtnText}>Şimdi Aktar</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1428,6 +1509,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     padding: 4,
+  },
+  offlineSyncBox: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#78350f',
+    borderColor: '#f59e0b',
+    borderWidth: 1,
+  },
+  offlineSyncText: {
+    color: '#fef3c7',
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  offlineSyncBtn: {
+    backgroundColor: '#d97706',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  offlineSyncBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
   },
   modalOverlay: {
     flex: 1,
